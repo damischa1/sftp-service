@@ -14,15 +14,15 @@ import (
 
 // S3FileSystem implements sftp.FileLister, sftp.FileReader, sftp.FileWriter, and sftp.FileCmder interfaces
 type S3FileSystem struct {
-	storage         Storage
-	incomingStorage IncomingStorage  // PostgreSQL storage for /in/ directory
+	storage         PricelistStorage
+	incomingStorage IncomingOrdersStorage  // PostgreSQL storage for /in/ directory orders
 	username        string
 	allowedDirs     []string  // Allowed directories for this user
 	allowedOps      []string  // Allowed operations
 }
 
-// IncomingStorage interface for PostgreSQL file storage (/in/ directory)
-type IncomingStorage interface {
+// IncomingOrdersStorage interface for PostgreSQL file storage (/in/ directory orders)
+type IncomingOrdersStorage interface {
 	StoreIncomingFile(username, filename, content string) error
 	FileExists(username, filename string) (bool, error)
 	ListIncomingFiles(username string) ([]IncomingFileInfo, error)
@@ -34,8 +34,8 @@ type IncomingFileInfo struct {
 	ModTime time.Time
 }
 
-// Storage interface defines the methods needed for file operations
-type Storage interface {
+// PricelistStorage interface defines the methods needed for pricelist file operations
+type PricelistStorage interface {
 	UploadFile(username, remotePath string, content io.Reader) error
 	DownloadFile(username, remotePath string) ([]byte, error)
 	DeleteFile(username, remotePath string) error
@@ -53,7 +53,7 @@ type FileInfo struct {
 }
 
 // NewS3FileSystem creates a new S3-backed file system with restricted access
-func NewS3FileSystem(storage Storage, incomingStorage IncomingStorage, username string) *S3FileSystem {
+func NewS3FileSystem(storage PricelistStorage, incomingStorage IncomingOrdersStorage, username string) *S3FileSystem {
 	return &S3FileSystem{
 		storage:         storage,
 		incomingStorage: incomingStorage,

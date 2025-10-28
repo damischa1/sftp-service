@@ -21,7 +21,7 @@ import (
 
 type Server struct {
 	db              *database.DB
-	storage         *storage.S3Storage
+	storage         *storage.PricelistS3Storage
 	incomingStorage *storage.IncomingOrdersStorage
 	hostKey         ssh.Signer
 	port            string
@@ -29,7 +29,7 @@ type Server struct {
 
 type Config struct {
 	DB              *database.DB
-	Storage         *storage.S3Storage
+	Storage         *storage.PricelistS3Storage
 	IncomingStorage *storage.IncomingOrdersStorage
 	HostKeyPath     string
 	Port            string

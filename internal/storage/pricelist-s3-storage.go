@@ -16,7 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
-type S3Storage struct {
+type PricelistS3Storage struct {
 	client     *s3.S3
 	uploader   *s3manager.Uploader
 	downloader *s3manager.Downloader
@@ -30,8 +30,8 @@ type FileInfo struct {
 	IsDir        bool
 }
 
-// NewS3Storage creates a new S3 storage client
-func NewS3Storage(region, accessKey, secretKey, bucket string) (*S3Storage, error) {
+// NewPricelistS3Storage creates a new S3 storage client for pricelist files
+func NewPricelistS3Storage(region, accessKey, secretKey, bucket string) (*PricelistS3Storage, error) {
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String(region),
 		Credentials: credentials.NewStaticCredentials(accessKey, secretKey, ""),
@@ -52,8 +52,8 @@ func NewS3Storage(region, accessKey, secretKey, bucket string) (*S3Storage, erro
 		return nil, fmt.Errorf("failed to access S3 bucket %s: %w", bucket, err)
 	}
 
-	log.Printf("Successfully connected to S3 bucket: %s", bucket)
-	return &S3Storage{
+	log.Printf("Successfully connected to S3 bucket for pricelist: %s", bucket)
+	return &PricelistS3Storage{
 		client:     client,
 		uploader:   uploader,
 		downloader: downloader,
@@ -61,8 +61,8 @@ func NewS3Storage(region, accessKey, secretKey, bucket string) (*S3Storage, erro
 	}, nil
 }
 
-// getUserPath constructs the S3 key with user prefix
-func (s *S3Storage) getUserPath(username, path string) string {
+// getUserPath constructs the S3 key with user prefix for pricelist files
+func (s *PricelistS3Storage) getUserPath(username, path string) string {
 	// Clean the path and ensure it starts with username
 	cleanPath := strings.TrimPrefix(path, "/")
 	if cleanPath == "" {
@@ -71,15 +71,15 @@ func (s *S3Storage) getUserPath(username, path string) string {
 	return username + "/" + cleanPath
 }
 
-// UploadFile is a no-op - file upload to S3 is not allowed
-func (s *S3Storage) UploadFile(username, remotePath string, content io.Reader) error {
+// UploadFile is a no-op - pricelist file upload to S3 is not allowed
+func (s *PricelistS3Storage) UploadFile(username, remotePath string, content io.Reader) error {
 	// No operation - file upload to S3 is disabled for security reasons
 	log.Printf("Upload operation attempted on file %s for user %s - operation blocked", remotePath, username)
 	return nil
 }
 
-// DownloadFile downloads only the specific allowed file from S3
-func (s *S3Storage) DownloadFile(username, remotePath string) ([]byte, error) {
+// DownloadFile downloads only the specific allowed pricelist file from S3
+func (s *PricelistS3Storage) DownloadFile(username, remotePath string) ([]byte, error) {
 	// Only allow downloading the specific file
 	if remotePath != "Hinnat/salhydro_kaikki.zip" {
 		return nil, fmt.Errorf("file not found: %s", remotePath)
@@ -101,15 +101,15 @@ func (s *S3Storage) DownloadFile(username, remotePath string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// DeleteFile is a no-op - file deletion is not allowed
-func (s *S3Storage) DeleteFile(username, remotePath string) error {
+// DeleteFile is a no-op - pricelist file deletion is not allowed
+func (s *PricelistS3Storage) DeleteFile(username, remotePath string) error {
 	// No operation - file deletion is disabled for security reasons
 	log.Printf("Delete operation attempted on file %s for user %s - operation blocked", remotePath, username)
 	return nil
 }
 
-// ListFiles returns only the specific allowed file: salhydro_kaikki.zip
-func (s *S3Storage) ListFiles(username, remotePath string) ([]FileInfo, error) {
+// ListFiles returns only the specific allowed pricelist file: salhydro_kaikki.zip
+func (s *PricelistS3Storage) ListFiles(username, remotePath string) ([]FileInfo, error) {
 	// Only show the specific file in Hinnat directory
 	if remotePath == "Hinnat" || remotePath == "Hinnat/" {
 		// Check if the specific file exists
@@ -153,8 +153,8 @@ func (s *S3Storage) ListFiles(username, remotePath string) ([]FileInfo, error) {
 	return []FileInfo{}, nil
 }
 
-// CreateDirectory creates a directory marker in S3
-func (s *S3Storage) CreateDirectory(username, remotePath string) error {
+// CreateDirectory creates a directory marker in S3 for pricelist
+func (s *PricelistS3Storage) CreateDirectory(username, remotePath string) error {
 	key := s.getUserPath(username, remotePath)
 	if !strings.HasSuffix(key, "/") {
 		key += "/"
@@ -174,8 +174,8 @@ func (s *S3Storage) CreateDirectory(username, remotePath string) error {
 	return nil
 }
 
-// FileExists checks if the specific allowed file exists in S3
-func (s *S3Storage) FileExists(username, remotePath string) (bool, error) {
+// FileExists checks if the specific allowed pricelist file exists in S3
+func (s *PricelistS3Storage) FileExists(username, remotePath string) (bool, error) {
 	// Only allow checking for the specific file or Hinnat directory
 	if remotePath == "Hinnat" {
 		return true, nil // Directory always "exists"
@@ -203,8 +203,8 @@ func (s *S3Storage) FileExists(username, remotePath string) (bool, error) {
 	return true, nil
 }
 
-// GetFileInfo gets information about the specific allowed file
-func (s *S3Storage) GetFileInfo(username, remotePath string) (*FileInfo, error) {
+// GetFileInfo gets information about the specific allowed pricelist file
+func (s *PricelistS3Storage) GetFileInfo(username, remotePath string) (*FileInfo, error) {
 	// Only allow getting info for the specific file or Hinnat directory
 	if remotePath == "Hinnat" {
 		return &FileInfo{

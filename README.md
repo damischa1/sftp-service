@@ -216,3 +216,35 @@ docker logs -f sftp-service
 # Tietokantaa
 docker logs -f sftp-postgres
 ```
+
+## ☁️ AWS Deployment (CDK)
+
+Projekti sisältää valmiin AWS CDK -konfiguraation tuotantokäyttöönottoa varten.
+
+### AWS-infrastruktuuri:
+- **ECS Fargate** - Containerien ajamiseen
+- **PostgreSQL RDS** - Käyttäjätiedot ja saapuvat tilaukset
+- **S3 Bucket** - Hinnastotiedostot
+- **Network Load Balancer** - SFTP-liikenteen jakamiseen
+- **VPC** - Verkko-infrastruktuuri
+
+### Pikaopas AWS-käyttöönottoon:
+
+```bash
+# Siirry CDK-kansioon
+cd cdk
+
+# Käynnistä automaattinen käyttöönotto (Windows)
+.\deploy.ps1 -Region "eu-west-1"
+
+# Käynnistä automaattinen käyttöönotto (Linux/MacOS)  
+chmod +x deploy.sh
+./deploy.sh
+```
+
+Katso täydelliset ohjeet: [`cdk/README.md`](cdk/README.md)
+
+### AWS-kustannukset (arvio):
+- **~$78/kuukausi** peruskäytössä (EU-West-1)
+- Sisältää: Fargate, RDS, Load Balancer, NAT Gateway
+- Ei sisällä: S3-tallennusta ja tiedonsiirtoa

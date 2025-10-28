@@ -28,8 +28,8 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize S3 storage
-	s3Storage, err := storage.NewS3Storage(
+	// Initialize S3 storage for pricelist
+	s3Storage, err := storage.NewPricelistS3Storage(
 		cfg.AWSRegion,
 		cfg.AWSAccessKeyID,
 		cfg.AWSSecretKey,
