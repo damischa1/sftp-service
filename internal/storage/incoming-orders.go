@@ -9,17 +9,17 @@ import (
 	_ "github.com/lib/pq"
 )
 
-type PostgreSQLFileStorage struct {
+type IncomingOrdersStorage struct {
 	db *sql.DB
 }
 
-// NewPostgreSQLFileStorage creates a new PostgreSQL file storage for /in/ directory
-func NewPostgreSQLFileStorage(db *sql.DB) *PostgreSQLFileStorage {
-	return &PostgreSQLFileStorage{db: db}
+// NewIncomingOrdersStorage creates a new PostgreSQL file storage for /in/ directory orders
+func NewIncomingOrdersStorage(db *sql.DB) *IncomingOrdersStorage {
+	return &IncomingOrdersStorage{db: db}
 }
 
 // StoreIncomingFile stores file content to incoming_files table
-func (s *PostgreSQLFileStorage) StoreIncomingFile(username, filename, content string) error {
+func (s *IncomingOrdersStorage) StoreIncomingFile(username, filename, content string) error {
 	// Check file size limit (100KB = 102400 bytes)
 	if len(content) > 102400 {
 		return fmt.Errorf("file size exceeds 100KB limit")
@@ -44,7 +44,7 @@ func (s *PostgreSQLFileStorage) StoreIncomingFile(username, filename, content st
 }
 
 // FileExists checks if incoming file exists
-func (s *PostgreSQLFileStorage) FileExists(username, filename string) (bool, error) {
+func (s *IncomingOrdersStorage) FileExists(username, filename string) (bool, error) {
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM incoming_files WHERE username = $1 AND filename = $2)`
 	
@@ -57,7 +57,7 @@ func (s *PostgreSQLFileStorage) FileExists(username, filename string) (bool, err
 }
 
 // ListIncomingFiles lists files in incoming_files table for user (for directory listing)
-func (s *PostgreSQLFileStorage) ListIncomingFiles(username string) ([]IncomingFileInfo, error) {
+func (s *IncomingOrdersStorage) ListIncomingFiles(username string) ([]IncomingFileInfo, error) {
 	query := `
 		SELECT filename, file_size, created_at
 		FROM incoming_files 

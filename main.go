@@ -39,8 +39,8 @@ func main() {
 		log.Fatalf("Failed to initialize S3 storage: %v", err)
 	}
 
-	// Initialize PostgreSQL file storage for /in/ directory
-	incomingStorage := storage.NewPostgreSQLFileStorage(db.GetConnection())
+	// Initialize PostgreSQL file storage for /in/ directory orders
+	incomingStorage := storage.NewIncomingOrdersStorage(db.GetConnection())
 
 	// Create SFTP server
 	sftpServer, err := sftp.NewServer(&sftp.Config{
