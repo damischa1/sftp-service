@@ -1,0 +1,26 @@
+# Ignore build artifacts
+/sftp-service
+/sftp-service.exe
+
+# Ignore environment files
+.env
+
+# Ignore host keys
+host_key
+host_key.pub
+
+# Ignore IDE files
+.vscode/
+.idea/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+*.log
+
+# Ignore temporary files
+*.tmp
+*.temp
+
