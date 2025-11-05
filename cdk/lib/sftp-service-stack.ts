@@ -2,11 +2,8 @@ import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as rds from 'aws-cdk-lib/aws-rds';
+
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
 export class SftpServiceStack extends cdk.Stack {
@@ -28,68 +25,8 @@ export class SftpServiceStack extends cdk.Stack {
           name: 'PrivateSubnet',
           subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
         },
-        {
-          cidrMask: 24,
-          name: 'DatabaseSubnet',
-          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
-        },
+
       ],
-    });
-
-    // S3 Bucket for pricelist files (Hinnat directory)
-    const pricelistBucket = new s3.Bucket(this, 'PricelistBucket', {
-      bucketName: `sftp-pricelist-${cdk.Stack.of(this).account}-${cdk.Stack.of(this).region}`,
-      versioned: false,
-      publicReadAccess: false,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      lifecycleRules: [
-        {
-          id: 'DeleteOldVersions',
-          enabled: true,
-          expiration: cdk.Duration.days(90), // Keep files for 90 days
-        },
-      ],
-      removalPolicy: cdk.RemovalPolicy.RETAIN, // Keep bucket when stack is deleted
-    });
-
-    // Database subnet group
-    const dbSubnetGroup = new rds.SubnetGroup(this, 'DatabaseSubnetGroup', {
-      vpc,
-      description: 'Subnet group for SFTP service database',
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
-      },
-    });
-
-    // Database credentials secret
-    const dbCredentials = new secretsmanager.Secret(this, 'DatabaseCredentials', {
-      description: 'SFTP Service Database Credentials',
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({ username: 'sftpuser' }),
-        generateStringKey: 'password',
-        excludeCharacters: ' %+~`#$&*()|[]{}:;<>?!\\/\'"',
-        includeSpace: false,
-        passwordLength: 32,
-      },
-    });
-
-    // PostgreSQL database for user authentication and incoming orders
-    const database = new rds.DatabaseInstance(this, 'SftpDatabase', {
-      engine: rds.DatabaseInstanceEngine.postgres({
-        version: rds.PostgresEngineVersion.VER_15,
-      }),
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
-      credentials: rds.Credentials.fromSecret(dbCredentials),
-      vpc,
-      subnetGroup: dbSubnetGroup,
-      databaseName: 'sftpdb',
-      allocatedStorage: 20,
-      maxAllocatedStorage: 100,
-      deleteAutomatedBackups: false,
-      backupRetention: cdk.Duration.days(7),
-      deletionProtection: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     // ECS Cluster for Fargate
@@ -111,12 +48,6 @@ export class SftpServiceStack extends cdk.Stack {
       cpu: 512,
     });
 
-    // Grant S3 permissions to task role
-    pricelistBucket.grantRead(taskDefinition.taskRole);
-    
-    // Grant database secret access to task role
-    dbCredentials.grantRead(taskDefinition.taskRole);
-
     // Container Definition
     const container = taskDefinition.addContainer('SftpContainer', {
       image: ecs.ContainerImage.fromRegistry('your-account-id.dkr.ecr.region.amazonaws.com/sftp-service:latest'),
@@ -125,19 +56,15 @@ export class SftpServiceStack extends cdk.Stack {
         logGroup,
       }),
       environment: {
-        AWS_REGION: cdk.Stack.of(this).region,
-        S3_BUCKET_NAME: pricelistBucket.bucketName,
-      },
-      secrets: {
-        DATABASE_URL: ecs.Secret.fromSecretsManager(dbCredentials, 'connectionString'),
-        AWS_ACCESS_KEY_ID: ecs.Secret.fromSecretsManager(dbCredentials, 'accessKeyId'),
-        AWS_SECRET_KEY: ecs.Secret.fromSecretsManager(dbCredentials, 'secretAccessKey'),
+        AUTH_API_URL: 'https://your-auth-api.com',
+        PRICELIST_API_URL: 'https://your-pricelist-api.com',
+        PRICELIST_API_KEY: 'your-api-key-here',
       },
     });
 
     // Add port mapping for SFTP
     container.addPortMappings({
-      containerPort: 2222,
+      containerPort: 22,
       protocol: ecs.Protocol.TCP,
     });
 
@@ -148,18 +75,11 @@ export class SftpServiceStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
-    // Allow SFTP traffic (port 2222)
+    // Allow SFTP traffic (port 22)
     sftpSecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(2222),
+      ec2.Port.tcp(22),
       'SFTP access'
-    );
-
-    // Allow database access from SFTP service
-    database.connections.allowFrom(
-      sftpSecurityGroup,
-      ec2.Port.tcp(5432),
-      'Allow database access from SFTP service'
     );
 
     // Fargate Service
@@ -184,13 +104,13 @@ export class SftpServiceStack extends cdk.Stack {
 
     // Target Group for SFTP service
     const targetGroup = new elbv2.NetworkTargetGroup(this, 'SftpTargetGroup', {
-      port: 2222,
+      port: 22,
       protocol: elbv2.Protocol.TCP,
       vpc,
       targetType: elbv2.TargetType.IP,
       healthCheck: {
         protocol: elbv2.Protocol.TCP,
-        port: '2222',
+        port: '22',
       },
     });
 
@@ -210,19 +130,6 @@ export class SftpServiceStack extends cdk.Stack {
       description: 'SFTP server endpoint (connect on port 22)',
     });
 
-    new cdk.CfnOutput(this, 'PricelistBucketName', {
-      value: pricelistBucket.bucketName,
-      description: 'S3 bucket name for pricelist files',
-    });
 
-    new cdk.CfnOutput(this, 'DatabaseEndpoint', {
-      value: database.instanceEndpoint.hostname,
-      description: 'PostgreSQL database endpoint',
-    });
-
-    new cdk.CfnOutput(this, 'DatabaseSecretArn', {
-      value: dbCredentials.secretArn,
-      description: 'Database credentials secret ARN',
-    });
   }
 }

@@ -1,44 +1,20 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: sftp-postgres
-    environment:
-      POSTGRES_DB: sftpdb
-      POSTGRES_USER: sftpuser
-      POSTGRES_PASSWORD: sftppass
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sftpuser -d sftpdb"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   sftp-service:
     build: .
     container_name: sftp-service
     environment:
-      DATABASE_URL: postgres://sftpuser:sftppass@postgres:5432/sftpdb?sslmode=disable
-      AWS_REGION: ${AWS_REGION:-eu-west-1}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      AUTH_API_URL: ${AUTH_API_URL:-http://host.docker.internal:8080}
+      PRICELIST_API_URL: ${PRICELIST_API_URL:-http://host.docker.internal:8081}
+      PRICELIST_API_KEY: ${PRICELIST_API_KEY}
       SFTP_HOST_KEY_PATH: /data/host_key
       SFTP_PORT: 2222
     ports:
       - "2222:2222"
     volumes:
       - sftp_data:/data
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  postgres_data:
   sftp_data:

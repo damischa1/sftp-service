@@ -15,13 +15,13 @@ import (
 // S3FileSystem implements sftp.FileLister, sftp.FileReader, sftp.FileWriter, and sftp.FileCmder interfaces
 type S3FileSystem struct {
 	storage         PricelistStorage
-	incomingStorage IncomingOrdersStorage  // PostgreSQL storage for /in/ directory orders
+	incomingStorage IncomingOrdersStorage  // File storage for /in/ directory orders
 	username        string
 	allowedDirs     []string  // Allowed directories for this user
 	allowedOps      []string  // Allowed operations
 }
 
-// IncomingOrdersStorage interface for PostgreSQL file storage (/in/ directory orders)
+// IncomingOrdersStorage interface for file storage (/in/ directory orders)
 type IncomingOrdersStorage interface {
 	StoreIncomingFile(username, filename, content string) error
 	FileExists(username, filename string) (bool, error)
@@ -147,7 +147,7 @@ func (fs *S3FileSystem) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 		return nil, fmt.Errorf("access denied: write not allowed to this path")
 	}
 	
-	// Handle /in/ directory separately (PostgreSQL storage)
+	// Handle /in/ directory separately (file storage)
 	if fs.isInIncomingDirectory(r.Filepath) {
 		filename := filepath.Base(r.Filepath)
 		return &incomingWriterAt{

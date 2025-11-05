@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"sftp-service/internal/auth"
 	"sftp-service/internal/config"
-	"sftp-service/internal/database"
 	"sftp-service/internal/sftp"
 	"sftp-service/internal/storage"
 )
@@ -21,31 +21,25 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Initialize database connection
-	db, err := database.NewDB(cfg.DatabaseURL)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
+	// Initialize web API authenticator
+	authenticator := auth.NewWebAPIAuthenticator(cfg.AuthAPIURL)
 
-	// Initialize S3 storage for pricelist
-	s3Storage, err := storage.NewPricelistS3Storage(
-		cfg.AWSRegion,
-		cfg.AWSAccessKeyID,
-		cfg.AWSSecretKey,
-		cfg.S3BucketName,
+	// Initialize Web API storage for pricelist
+	pricelistStorage, err := storage.NewPricelistWebAPIStorage(
+		cfg.PricelistAPIURL,
+		cfg.PricelistAPIKey,
 	)
 	if err != nil {
-		log.Fatalf("Failed to initialize S3 storage: %v", err)
+		log.Fatalf("Failed to initialize pricelist API storage: %v", err)
 	}
 
-	// Initialize PostgreSQL file storage for /in/ directory orders
-	incomingStorage := storage.NewIncomingOrdersStorage(db.GetConnection())
+	// Initialize file storage for /in/ directory orders
+	incomingStorage := storage.NewIncomingOrdersStorage("./incoming_orders")
 
 	// Create SFTP server
 	sftpServer, err := sftp.NewServer(&sftp.Config{
-		DB:              db,
-		Storage:         s3Storage,
+		Authenticator:   authenticator,
+		Storage:         pricelistStorage,
 		IncomingStorage: incomingStorage,
 		HostKeyPath:     cfg.SFTPHostKeyPath,
 		Port:            cfg.SFTPPort,

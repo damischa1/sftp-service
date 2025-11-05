@@ -14,22 +14,21 @@ import (
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
-	"	"sftp-service/internal/database"
-	"sftp-service/internal/storage""
+	"sftp-service/internal/auth"
 	"sftp-service/internal/storage"
 )
 
 type Server struct {
-	db              *database.DB
-	storage         *storage.PricelistS3Storage
+	authenticator   *auth.WebAPIAuthenticator
+	storage         *storage.PricelistWebAPIStorage
 	incomingStorage *storage.IncomingOrdersStorage
 	hostKey         ssh.Signer
 	port            string
 }
 
 type Config struct {
-	DB              *database.DB
-	Storage         *storage.PricelistS3Storage
+	Authenticator   *auth.WebAPIAuthenticator
+	Storage         *storage.PricelistWebAPIStorage
 	IncomingStorage *storage.IncomingOrdersStorage
 	HostKeyPath     string
 	Port            string
@@ -43,7 +42,7 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	return &Server{
-		db:              config.DB,
+		authenticator:   config.Authenticator,
 		storage:         config.Storage,
 		incomingStorage: config.IncomingStorage,
 		hostKey:         hostKey,
@@ -86,7 +85,7 @@ func (s *Server) passwordCallback(conn ssh.ConnMetadata, password []byte) (*ssh.
 	username := conn.User()
 	log.Printf("Authentication attempt for user: %s", username)
 
-	user, err := s.db.AuthenticateUser(username, string(password))
+	user, err := s.authenticator.AuthenticateUser(username, string(password))
 	if err != nil {
 		log.Printf("Authentication failed for user %s: %v", username, err)
 		return nil, fmt.Errorf("authentication failed")
@@ -94,10 +93,11 @@ func (s *Server) passwordCallback(conn ssh.ConnMetadata, password []byte) (*ssh.
 
 	log.Printf("Authentication successful for user: %s", username)
 	
-	// Store username in permissions for later use
+	// Store username and user ID in permissions for later use
 	return &ssh.Permissions{
 		Extensions: map[string]string{
 			"username": user.Username,
+			"user_id":  user.ID,
 		},
 	}, nil
 }

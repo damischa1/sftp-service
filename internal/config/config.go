@@ -8,11 +8,9 @@ import (
 )
 
 type Config struct {
-	DatabaseURL      string
-	AWSRegion        string
-	AWSAccessKeyID   string
-	AWSSecretKey     string
-	S3BucketName     string
+	AuthAPIURL       string
+	PricelistAPIURL  string
+	PricelistAPIKey  string
 	SFTPHostKeyPath  string
 	SFTPPort         string
 }
@@ -23,24 +21,22 @@ func LoadConfig() (*Config, error) {
 	_ = godotenv.Load()
 
 	config := &Config{
-		DatabaseURL:     getEnv("DATABASE_URL", "postgres://username:password@localhost:5432/sftpdb?sslmode=disable"),
-		AWSRegion:       getEnv("AWS_REGION", "eu-west-1"),
-		AWSAccessKeyID:  getEnv("AWS_ACCESS_KEY_ID", ""),
-		AWSSecretKey:    getEnv("AWS_SECRET_ACCESS_KEY", ""),
-		S3BucketName:    getEnv("S3_BUCKET_NAME", ""),
+		AuthAPIURL:      getEnv("AUTH_API_URL", "http://localhost:8080"),
+		PricelistAPIURL: getEnv("PRICELIST_API_URL", "http://localhost:8081"),
+		PricelistAPIKey: getEnv("PRICELIST_API_KEY", ""),
 		SFTPHostKeyPath: getEnv("SFTP_HOST_KEY_PATH", "./host_key"),
 		SFTPPort:        getEnv("SFTP_PORT", "2222"),
 	}
 
 	// Validate required configuration
-	if config.AWSAccessKeyID == "" {
-		return nil, fmt.Errorf("AWS_ACCESS_KEY_ID is required")
+	if config.AuthAPIURL == "" {
+		return nil, fmt.Errorf("AUTH_API_URL is required")
 	}
-	if config.AWSSecretKey == "" {
-		return nil, fmt.Errorf("AWS_SECRET_ACCESS_KEY is required")
+	if config.PricelistAPIURL == "" {
+		return nil, fmt.Errorf("PRICELIST_API_URL is required")
 	}
-	if config.S3BucketName == "" {
-		return nil, fmt.Errorf("S3_BUCKET_NAME is required")
+	if config.PricelistAPIKey == "" {
+		return nil, fmt.Errorf("PRICELIST_API_KEY is required")
 	}
 
 	return config, nil
