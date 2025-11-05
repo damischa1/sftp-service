@@ -33,8 +33,11 @@ func main() {
 		log.Fatalf("Failed to initialize pricelist API storage: %v", err)
 	}
 
-	// Initialize file storage for /in/ directory orders
-	incomingStorage := storage.NewIncomingOrdersStorage("./incoming_orders")
+	// Initialize API storage for /in/ directory orders
+	incomingStorage := storage.NewIncomingOrdersStorage(
+		cfg.OrdersAPIURL,
+		cfg.OrdersAPIKey,
+	)
 
 	// Create SFTP server
 	sftpServer, err := sftp.NewServer(&sftp.Config{

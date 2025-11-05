@@ -11,6 +11,8 @@ type Config struct {
 	AuthAPIURL       string
 	PricelistAPIURL  string
 	PricelistAPIKey  string
+	OrdersAPIURL     string
+	OrdersAPIKey     string
 	SFTPHostKeyPath  string
 	SFTPPort         string
 }
@@ -24,6 +26,8 @@ func LoadConfig() (*Config, error) {
 		AuthAPIURL:      getEnv("AUTH_API_URL", "http://localhost:8080"),
 		PricelistAPIURL: getEnv("PRICELIST_API_URL", "http://localhost:8081"),
 		PricelistAPIKey: getEnv("PRICELIST_API_KEY", ""),
+		OrdersAPIURL:    getEnv("ORDERS_API_URL", "http://localhost:8082"),
+		OrdersAPIKey:    getEnv("ORDERS_API_KEY", ""),
 		SFTPHostKeyPath: getEnv("SFTP_HOST_KEY_PATH", "./host_key"),
 		SFTPPort:        getEnv("SFTP_PORT", "2222"),
 	}
@@ -37,6 +41,12 @@ func LoadConfig() (*Config, error) {
 	}
 	if config.PricelistAPIKey == "" {
 		return nil, fmt.Errorf("PRICELIST_API_KEY is required")
+	}
+	if config.OrdersAPIURL == "" {
+		return nil, fmt.Errorf("ORDERS_API_URL is required")
+	}
+	if config.OrdersAPIKey == "" {
+		return nil, fmt.Errorf("ORDERS_API_KEY is required")
 	}
 
 	return config, nil

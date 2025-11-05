@@ -158,7 +158,7 @@ func (s *Server) handleSFTP(channel ssh.Channel, username string) {
 	log.Printf("Starting SFTP session for user: %s", username)
 
 	// Create S3-backed file system for the user
-	filesystem := NewS3FileSystem(s.storage, s.incomingStorage, username)
+	filesystem := NewAPIFileSystem(s.storage, s.incomingStorage, username)
 
 	// Create SFTP server
 	sftpServer, err := sftp.NewServer(

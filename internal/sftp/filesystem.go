@@ -12,8 +12,8 @@ import (
 	"github.com/pkg/sftp"
 )
 
-// S3FileSystem implements sftp.FileLister, sftp.FileReader, sftp.FileWriter, and sftp.FileCmder interfaces
-type S3FileSystem struct {
+// APIFileSystem implements sftp.FileLister, sftp.FileReader, sftp.FileWriter, and sftp.FileCmder interfaces
+type APIFileSystem struct {
 	storage         PricelistStorage
 	incomingStorage IncomingOrdersStorage  // File storage for /in/ directory orders
 	username        string
@@ -52,9 +52,9 @@ type FileInfo struct {
 	IsDir        bool
 }
 
-// NewS3FileSystem creates a new S3-backed file system with restricted access
-func NewS3FileSystem(storage PricelistStorage, incomingStorage IncomingOrdersStorage, username string) *S3FileSystem {
-	return &S3FileSystem{
+// NewAPIFileSystem creates a new API-backed file system with restricted access
+func NewAPIFileSystem(storage PricelistStorage, incomingStorage IncomingOrdersStorage, username string) *APIFileSystem {
+	return &APIFileSystem{
 		storage:         storage,
 		incomingStorage: incomingStorage,
 		username:        username,
@@ -64,7 +64,7 @@ func NewS3FileSystem(storage PricelistStorage, incomingStorage IncomingOrdersSto
 }
 
 // isPathAllowed checks if the given path is allowed for the user
-func (fs *S3FileSystem) isPathAllowed(path string) bool {
+func (fs *APIFileSystem) isPathAllowed(path string) bool {
 	// Normalize path
 	if path == "" || path == "." {
 		path = "/"
@@ -84,7 +84,7 @@ func (fs *S3FileSystem) isPathAllowed(path string) bool {
 }
 
 // isWriteAllowed checks if writing is allowed in the given path
-func (fs *S3FileSystem) isWriteAllowed(path string) bool {
+func (fs *APIFileSystem) isWriteAllowed(path string) bool {
 	// Only allow writing to /in and /Hinnat directories (not root)
 	if path == "/" {
 		return false
@@ -95,7 +95,7 @@ func (fs *S3FileSystem) isWriteAllowed(path string) bool {
 }
 
 // getDirectoryFromPath extracts the base directory from a file path
-func (fs *S3FileSystem) getDirectoryFromPath(path string) string {
+func (fs *APIFileSystem) getDirectoryFromPath(path string) string {
 	if path == "/" {
 		return "/"
 	}
@@ -109,12 +109,12 @@ func (fs *S3FileSystem) getDirectoryFromPath(path string) string {
 }
 
 // isInIncomingDirectory checks if path is in /in/ directory
-func (fs *S3FileSystem) isInIncomingDirectory(path string) bool {
+func (fs *APIFileSystem) isInIncomingDirectory(path string) bool {
 	return strings.HasPrefix(path, "/in/") && !strings.Contains(strings.TrimPrefix(path, "/in/"), "/")
 }
 
 // Fileread implements sftp.FileReader
-func (fs *S3FileSystem) Fileread(r *sftp.Request) (io.ReaderAt, error) {
+func (fs *APIFileSystem) Fileread(r *sftp.Request) (io.ReaderAt, error) {
 	log.Printf("Reading file: %s for user: %s", r.Filepath, fs.username)
 	
 	// Check if path is allowed
@@ -138,7 +138,7 @@ func (fs *S3FileSystem) Fileread(r *sftp.Request) (io.ReaderAt, error) {
 }
 
 // Filewrite implements sftp.FileWriter
-func (fs *S3FileSystem) Filewrite(r *sftp.Request) (io.WriterAt, error) {
+func (fs *APIFileSystem) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 	log.Printf("Writing file: %s for user: %s", r.Filepath, fs.username)
 	
 	// Check if path is allowed for writing
@@ -157,8 +157,8 @@ func (fs *S3FileSystem) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 		}, nil
 	}
 	
-	// Handle /Hinnat/ directory (S3 storage)
-	return &s3WriterAt{
+	// Handle /Hinnat/ directory (Web API storage)
+	return &apiWriterAt{
 		storage:  fs.storage,
 		username: fs.username,
 		path:     r.Filepath,
@@ -166,7 +166,7 @@ func (fs *S3FileSystem) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 }
 
 // Filecmd implements sftp.FileCmder
-func (fs *S3FileSystem) Filecmd(r *sftp.Request) error {
+func (fs *APIFileSystem) Filecmd(r *sftp.Request) error {
 	log.Printf("File command: %s %s for user: %s", r.Method, r.Filepath, fs.username)
 	
 	// Check if path is allowed
@@ -200,7 +200,7 @@ func (fs *S3FileSystem) Filecmd(r *sftp.Request) error {
 }
 
 // Filelist implements sftp.FileLister
-func (fs *S3FileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
+func (fs *APIFileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 	log.Printf("Listing directory: %s for user: %s", r.Filepath, fs.username)
 	
 	// Check if path is allowed
@@ -226,7 +226,7 @@ func (fs *S3FileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 	
 	var fileInfos []os.FileInfo
 	for _, file := range files {
-		fileInfos = append(fileInfos, &s3FileInfo{
+		fileInfos = append(fileInfos, &apiFileInfo{
 			name:    file.Name,
 			size:    file.Size,
 			modTime: file.LastModified,
@@ -238,18 +238,18 @@ func (fs *S3FileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 }
 
 // listRootDirectory returns only the allowed directories in root
-func (fs *S3FileSystem) listRootDirectory() (sftp.ListerAt, error) {
+func (fs *APIFileSystem) listRootDirectory() (sftp.ListerAt, error) {
 	var fileInfos []os.FileInfo
 	
 	// Add the allowed directories
-	fileInfos = append(fileInfos, &s3FileInfo{
+	fileInfos = append(fileInfos, &apiFileInfo{
 		name:    "in",
 		size:    0,
 		modTime: time.Now(),
 		isDir:   true,
 	})
 	
-	fileInfos = append(fileInfos, &s3FileInfo{
+	fileInfos = append(fileInfos, &apiFileInfo{
 		name:    "Hinnat",
 		size:    0,
 		modTime: time.Now(),
@@ -259,8 +259,8 @@ func (fs *S3FileSystem) listRootDirectory() (sftp.ListerAt, error) {
 	return &listerat{files: fileInfos}, nil
 }
 
-// listIncomingDirectory returns files from PostgreSQL incoming_files table
-func (fs *S3FileSystem) listIncomingDirectory() (sftp.ListerAt, error) {
+// listIncomingDirectory returns files from incoming orders storage
+func (fs *APIFileSystem) listIncomingDirectory() (sftp.ListerAt, error) {
 	files, err := fs.incomingStorage.ListIncomingFiles(fs.username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list incoming files: %w", err)
@@ -268,7 +268,7 @@ func (fs *S3FileSystem) listIncomingDirectory() (sftp.ListerAt, error) {
 	
 	var fileInfos []os.FileInfo
 	for _, file := range files {
-		fileInfos = append(fileInfos, &s3FileInfo{
+		fileInfos = append(fileInfos, &apiFileInfo{
 			name:    file.Name,
 			size:    file.Size,
 			modTime: file.ModTime,
@@ -296,15 +296,15 @@ func (r *bytesReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// s3WriterAt implements io.WriterAt for S3 uploads
-type s3WriterAt struct {
-	storage  Storage
+// apiWriterAt implements io.WriterAt for API uploads
+type apiWriterAt struct {
+	storage  PricelistStorage
 	username string
 	path     string
 	data     []byte
 }
 
-func (w *s3WriterAt) WriteAt(p []byte, off int64) (int, error) {
+func (w *apiWriterAt) WriteAt(p []byte, off int64) (int, error) {
 	// Extend data slice if necessary
 	needed := int(off) + len(p)
 	if needed > len(w.data) {
@@ -317,16 +317,16 @@ func (w *s3WriterAt) WriteAt(p []byte, off int64) (int, error) {
 	return len(p), nil
 }
 
-func (w *s3WriterAt) Close() error {
+func (w *apiWriterAt) Close() error {
 	if len(w.data) > 0 {
 		return w.storage.UploadFile(w.username, w.path, strings.NewReader(string(w.data)))
 	}
 	return nil
 }
 
-// incomingWriterAt implements io.WriterAt for PostgreSQL /in/ directory
+// incomingWriterAt implements io.WriterAt for API /in/ directory
 type incomingWriterAt struct {
-	incomingStorage IncomingStorage
+	incomingStorage IncomingOrdersStorage
 	username        string
 	filename        string
 	data            []byte
@@ -353,25 +353,25 @@ func (w *incomingWriterAt) Close() error {
 	return nil
 }
 
-// s3FileInfo implements os.FileInfo for S3 files
-type s3FileInfo struct {
+// apiFileInfo implements os.FileInfo for API files
+type apiFileInfo struct {
 	name    string
 	size    int64
 	modTime time.Time
 	isDir   bool
 }
 
-func (fi *s3FileInfo) Name() string       { return fi.name }
-func (fi *s3FileInfo) Size() int64        { return fi.size }
-func (fi *s3FileInfo) Mode() os.FileMode  { 
+func (fi *apiFileInfo) Name() string       { return fi.name }
+func (fi *apiFileInfo) Size() int64        { return fi.size }
+func (fi *apiFileInfo) Mode() os.FileMode  { 
 	if fi.isDir {
 		return os.ModeDir | 0755
 	}
 	return 0644
 }
-func (fi *s3FileInfo) ModTime() time.Time { return fi.modTime }
-func (fi *s3FileInfo) IsDir() bool        { return fi.isDir }
-func (fi *s3FileInfo) Sys() interface{}   { return nil }
+func (fi *apiFileInfo) ModTime() time.Time { return fi.modTime }
+func (fi *apiFileInfo) IsDir() bool        { return fi.isDir }
+func (fi *apiFileInfo) Sys() interface{}   { return nil }
 
 // listerat implements sftp.ListerAt
 type listerat struct {
