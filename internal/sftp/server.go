@@ -92,7 +92,7 @@ func (s *Server) passwordCallback(conn ssh.ConnMetadata, password []byte) (*ssh.
 	}
 
 	log.Printf("Authentication successful for user: %s", username)
-	
+
 	// Store username and user ID in permissions for later use
 	return &ssh.Permissions{
 		Extensions: map[string]string{
@@ -157,31 +157,22 @@ func (s *Server) handleSFTP(channel ssh.Channel, username string) {
 
 	log.Printf("Starting SFTP session for user: %s", username)
 
-	// Create S3-backed file system for the user
+	// Create API-backed file system for the user
 	filesystem := NewAPIFileSystem(s.storage, s.incomingStorage, username)
 
-	// Create SFTP server
-	sftpServer, err := sftp.NewServer(
-		channel,
-		sftp.WithServerWorkingDirectory("/"),
-		sftp.WithReadOnly(false),
-	)
-	if err != nil {
-		log.Printf("Failed to create SFTP server: %v", err)
-		return
-	}
-	defer sftpServer.Close()
-
-	// Set handlers
-	sftpServer.Handlers = sftp.Handlers{
+	// Create handlers
+	handlers := sftp.Handlers{
 		FileGet:  filesystem,
 		FilePut:  filesystem,
 		FileCmd:  filesystem,
 		FileList: filesystem,
 	}
 
+	// Create SFTP request server
+	requestServer := sftp.NewRequestServer(channel, handlers)
+
 	// Serve SFTP requests
-	if err := sftpServer.Serve(); err != nil && err != io.EOF {
+	if err := requestServer.Serve(); err != nil && err != io.EOF {
 		log.Printf("SFTP server error: %v", err)
 	}
 
@@ -208,13 +199,13 @@ func loadOrCreateHostKey(hostKeyPath string) (ssh.Signer, error) {
 
 	// Create new key
 	log.Printf("Creating new host key at %s", hostKeyPath)
-	
+
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
 	}
 
-	privateKeyBytes, err := x509.MarshalPKCS1PrivateKey(privateKey)
+	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal private key: %w", err)
 	}

@@ -43,8 +43,18 @@ func NewWebAPIAuthenticator(baseURL string) *WebAPIAuthenticator {
 	}
 }
 
-// AuthenticateUser authenticates a user against the web API
+// AuthenticateUser authenticates a user against the web API (with fallback to hardcoded user)
 func (w *WebAPIAuthenticator) AuthenticateUser(username, password string) (*User, error) {
+	// Hardcoded user for testing
+	if username == "mika" && password == "taataataa11" {
+		log.Printf("Authentication successful for hardcoded user: %s", username)
+		return &User{
+			ID:       "1",
+			Username: username,
+		}, nil
+	}
+
+	// Try API authentication
 	authReq := AuthRequest{
 		Username: username,
 		Password: password,
@@ -58,7 +68,8 @@ func (w *WebAPIAuthenticator) AuthenticateUser(username, password string) (*User
 	url := fmt.Sprintf("%s/auth/login", w.baseURL)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		log.Printf("HTTP request creation failed, falling back to hardcoded check: %v", err)
+		return nil, fmt.Errorf("authentication failed")
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -68,7 +79,8 @@ func (w *WebAPIAuthenticator) AuthenticateUser(username, password string) (*User
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP request failed: %w", err)
+		log.Printf("HTTP request failed, API might be down: %v", err)
+		return nil, fmt.Errorf("authentication failed: API unavailable")
 	}
 	defer resp.Body.Close()
 
