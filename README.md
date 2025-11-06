@@ -66,28 +66,54 @@ SFTP Client → SFTP Server → FUTUR API (Next.js)
 
 ## Quick Setup Guide
 
-### 1. Install dependencies
+### Local Development
+
+1. **Install dependencies**
 ```bash
 go mod tidy
 ```
 
-### 2. Configure environment
+2. **Configure environment**
 ```bash
 cp .env.example .env
 # Edit .env file - set FUTUR_API_URL to point to your Next.js application
 ```
 
-### 3. Generate SSH host key
+3. **Generate SSH host key**
 ```bash
 ssh-keygen -t rsa -b 2048 -f hostkey -N ""
 ```
 
-### 4. Start the service
+4. **Start the service**
 ```bash
 go run main.go
 # or
 go build -o sftp-service.exe .
 ./sftp-service.exe
+```
+
+### AWS Production Deployment
+
+1. **Build and push Docker image**
+```powershell
+# Windows PowerShell
+.\build-and-push.ps1
+
+# Linux/Mac
+chmod +x build-and-push.sh
+./build-and-push.sh
+```
+
+2. **Deploy infrastructure**
+```bash
+cd cdk
+cdk deploy
+```
+
+3. **Complete deployment (build + deploy)**
+```powershell
+# Windows - does both steps above
+.\deploy.ps1
 ```
 
 ### 5. Test connection

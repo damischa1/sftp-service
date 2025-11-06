@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -29,11 +29,8 @@ WORKDIR /root/
 # Copy the binary from builder stage
 COPY --from=builder /app/sftp-service .
 
-# Create directory for host key
+# Create directory for host key (will be mounted from EFS)
 RUN mkdir -p /data
-
-# Copy host key if it exists in build context (optional)
-COPY host_key* /data/
 
 # Expose SFTP port
 EXPOSE 22

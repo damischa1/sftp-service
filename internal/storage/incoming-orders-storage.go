@@ -13,8 +13,7 @@ import (
 
 type IncomingOrdersStorage struct {
 	apiURL     string
-	apiKey     string
-	userApiKey string // User's password used as API key
+	apiKey     string // User's password used as API key
 	username   string // Current user
 	httpClient *http.Client
 	mutex      sync.RWMutex
@@ -28,21 +27,12 @@ type OrderRequest struct {
 	FileSize  int    `json:"file_size"`
 }
 
-// SetApiKey sets the user's API key (password)
-func (s *IncomingOrdersStorage) SetApiKey(apiKey string) {
-	s.userApiKey = apiKey
-}
-
-// SetUsername sets the current username
-func (s *IncomingOrdersStorage) SetUsername(username string) {
-	s.username = username
-}
-
 // NewIncomingOrdersStorage creates a new API-based storage for /in/ directory orders
-func NewIncomingOrdersStorage(apiURL, apiKey string) *IncomingOrdersStorage {
+func NewIncomingOrdersStorage(apiURL, username, apiKey string) *IncomingOrdersStorage {
 	return &IncomingOrdersStorage{
-		apiURL: apiURL,
-		apiKey: apiKey,
+		apiURL:   apiURL,
+		apiKey:   apiKey, // Store user's API key (password) in apiKey field
+		username: username,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -102,7 +92,7 @@ func (s *IncomingOrdersStorage) sendOrderToAPI(filename, content, timestamp stri
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "SFTP-Service/1.0")
-	req.Header.Set("X-ApiKey", s.userApiKey)
+	req.Header.Set("X-ApiKey", s.apiKey)
 
 	log.Printf("Sending order to API: %s (user: %s, file: %s)", url, s.username, filename)
 

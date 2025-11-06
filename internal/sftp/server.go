@@ -19,19 +19,17 @@ import (
 )
 
 type Server struct {
-	authenticator   *auth.WebAPIAuthenticator
-	storage         *storage.PricelistWebAPIStorage
-	incomingStorage *storage.IncomingOrdersStorage
-	hostKey         ssh.Signer
-	port            string
+	authenticator *auth.WebAPIAuthenticator
+	baseURL       string
+	hostKey       ssh.Signer
+	port          string
 }
 
 type Config struct {
-	Authenticator   *auth.WebAPIAuthenticator
-	Storage         *storage.PricelistWebAPIStorage
-	IncomingStorage *storage.IncomingOrdersStorage
-	HostKeyPath     string
-	Port            string
+	Authenticator *auth.WebAPIAuthenticator
+	BaseURL       string
+	HostKeyPath   string
+	Port          string
 }
 
 // NewServer creates a new SFTP server
@@ -42,11 +40,10 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	return &Server{
-		authenticator:   config.Authenticator,
-		storage:         config.Storage,
-		incomingStorage: config.IncomingStorage,
-		hostKey:         hostKey,
-		port:            config.Port,
+		authenticator: config.Authenticator,
+		baseURL:       config.BaseURL,
+		hostKey:       hostKey,
+		port:          config.Port,
 	}, nil
 }
 
@@ -159,8 +156,17 @@ func (s *Server) handleSFTP(channel ssh.Channel, username, apiKey string) {
 
 	log.Printf("Starting SFTP session for user: %s", username)
 
+	// Create storage instances for this user session
+	pricelistStorage, err := storage.NewPricelistWebAPIStorage(s.baseURL, "")
+	if err != nil {
+		log.Printf("Failed to create pricelist storage for %s: %v", username, err)
+		return
+	}
+
+	incomingStorage := storage.NewIncomingOrdersStorage(s.baseURL, username, apiKey)
+
 	// Create API-backed file system for the user
-	filesystem := NewAPIFileSystem(s.storage, s.incomingStorage, username, apiKey)
+	filesystem := NewAPIFileSystem(pricelistStorage, incomingStorage, username, apiKey)
 
 	// Create handlers
 	handlers := sftp.Handlers{

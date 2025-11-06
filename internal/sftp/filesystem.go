@@ -26,8 +26,6 @@ type APIFileSystem struct {
 
 // IncomingOrdersStorage interface for file storage (/in/ directory orders)
 type IncomingOrdersStorage interface {
-	SetApiKey(apiKey string)
-	SetUsername(username string)
 	StoreIncomingFile(filename, content string) error
 	FileExists(filename string) (bool, error)
 	ListIncomingFiles() ([]storage.IncomingFileInfo, error)
@@ -35,8 +33,6 @@ type IncomingOrdersStorage interface {
 
 // PricelistStorage interface defines the methods needed for pricelist file operations
 type PricelistStorage interface {
-	SetApiKey(apiKey string)
-	SetUsername(username string)
 	UploadFile(remotePath string, content io.Reader) error
 	DownloadFile(remotePath string) ([]byte, error)
 	DeleteFile(remotePath string) error
@@ -47,15 +43,14 @@ type PricelistStorage interface {
 }
 
 // NewAPIFileSystem creates a new API-backed file system with restricted access
-func NewAPIFileSystem(storage PricelistStorage, incomingStorage IncomingOrdersStorage, username, apiKey string) *APIFileSystem {
-	// Set API key and username for both storages
-	storage.SetApiKey(apiKey)
-	storage.SetUsername(username)
-	incomingStorage.SetApiKey(apiKey)
-	incomingStorage.SetUsername(username)
+func NewAPIFileSystem(baseStorage *storage.PricelistWebAPIStorage, incomingStorage IncomingOrdersStorage, username, apiKey string) *APIFileSystem {
+	// Create user-specific wrapper for pricelist storage
+	userStorage := storage.NewUserPricelistStorage(baseStorage, username, apiKey)
+
+	// IncomingStorage is already configured with user details when created
 
 	return &APIFileSystem{
-		storage:         storage,
+		storage:         userStorage,
 		incomingStorage: incomingStorage,
 		username:        username,                                  // Keep for now, can be removed later
 		apiKey:          apiKey,                                    // Keep for now, can be removed later

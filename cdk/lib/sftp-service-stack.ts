@@ -2,8 +2,9 @@ import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-
+import * as efs from 'aws-cdk-lib/aws-efs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { Construct } from 'constructs';
 
 export class SftpServiceStack extends cdk.Stack {
@@ -42,15 +43,69 @@ export class SftpServiceStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Task Definition
+    // Security Group for EFS
+    const efsSecurityGroup = new ec2.SecurityGroup(this, 'EfsSecurityGroup', {
+      vpc,
+      description: 'Security group for EFS',
+      allowAllOutbound: false,
+    });
+
+    // EFS File System for persistent host key storage
+    const fileSystem = new efs.FileSystem(this, 'SftpEfsFileSystem', {
+      vpc,
+      lifecyclePolicy: efs.LifecyclePolicy.AFTER_30_DAYS,
+      performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
+      throughputMode: efs.ThroughputMode.BURSTING,
+      securityGroup: efsSecurityGroup,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // EFS Access Point for /data directory
+    const accessPoint = new efs.AccessPoint(this, 'SftpDataAccessPoint', {
+      fileSystem,
+      path: '/data',
+      createAcl: {
+        ownerUid: '0',
+        ownerGid: '0',
+        permissions: '755',
+      },
+      posixUser: {
+        uid: '0',
+        gid: '0',
+      },
+    });
+
+    // Get reference to existing ECR repository
+    const ecrRepository = ecr.Repository.fromRepositoryName(
+      this, 
+      'SftpEcrRepository', 
+      'futur-sftp-service'
+    );
+
+    // Task Definition (CDK will automatically create execution role with ECR permissions)
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'SftpTaskDefinition', {
       memoryLimitMiB: 1024,
       cpu: 512,
     });
 
+    // Add EFS volume to task definition
+    taskDefinition.addVolume({
+      name: 'sftp-data-volume',
+      efsVolumeConfiguration: {
+        fileSystemId: fileSystem.fileSystemId,
+        authorizationConfig: {
+          accessPointId: accessPoint.accessPointId,
+        },
+        transitEncryption: 'ENABLED',
+      },
+    });
+
+    // Use pre-built Docker image from ECR (this automatically grants pull permissions)
+    const dockerImage = ecs.ContainerImage.fromEcrRepository(ecrRepository, 'latest');
+
     // Container Definition
     const container = taskDefinition.addContainer('SftpContainer', {
-      image: ecs.ContainerImage.fromRegistry('your-account-id.dkr.ecr.region.amazonaws.com/sftp-service:latest'),
+      image: dockerImage,
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'sftp-service',
         logGroup,
@@ -60,6 +115,13 @@ export class SftpServiceStack extends cdk.Stack {
         SFTP_HOST_KEY_PATH: '/data/host_key',
         SFTP_PORT: '22',
       },
+    });
+
+    // Add EFS mount point to container
+    container.addMountPoints({
+      sourceVolume: 'sftp-data-volume',
+      containerPath: '/data',
+      readOnly: false,
     });
 
     // Add port mapping for SFTP
@@ -75,21 +137,28 @@ export class SftpServiceStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
-    // Allow SFTP traffic (port 22)
+    // Allow SFTP traffic (port 22) only from within VPC (NLB will forward traffic)
     sftpSecurityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
+      ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.tcp(22),
-      'SFTP access'
+      'SFTP access from within VPC'
     );
 
-    // Fargate Service
+    // Allow NFS traffic from SFTP containers to EFS
+    efsSecurityGroup.addIngressRule(
+      sftpSecurityGroup,
+      ec2.Port.tcp(2049),
+      'NFS access from SFTP containers'
+    );
+
+    // Fargate Service (in private subnet behind NLB)
     const service = new ecs.FargateService(this, 'SftpService', {
       cluster,
       taskDefinition,
       desiredCount: 1,
-      assignPublicIp: true,
+      assignPublicIp: false, // No public IP needed behind NLB
       vpcSubnets: {
-        subnetType: ec2.SubnetType.PUBLIC, // SFTP needs public IP for client access
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, // Private subnet with NAT gateway
       },
       securityGroups: [sftpSecurityGroup],
       platformVersion: ecs.FargatePlatformVersion.LATEST,

@@ -1,0 +1,28 @@
+# CDK output directory
+cdk/cdk.out/
+cdk/node_modules/
+
+# Build artifacts
+*.exe
+sftp-service
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+.env
+
+# Temporary files
+*.tmp
+*.temp
+
+# Git directory
+.git/

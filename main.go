@@ -9,7 +9,6 @@ import (
 	"sftp-service/internal/auth"
 	"sftp-service/internal/config"
 	"sftp-service/internal/sftp"
-	"sftp-service/internal/storage"
 )
 
 func main() {
@@ -24,28 +23,12 @@ func main() {
 	// Initialize web API authenticator
 	authenticator := auth.NewWebAPIAuthenticator(cfg.FuturAPIURL)
 
-	// Initialize Web API storage for pricelist
-	pricelistStorage, err := storage.NewPricelistWebAPIStorage(
-		cfg.FuturAPIURL,
-		"", // No separate API key needed - using user password
-	)
-	if err != nil {
-		log.Fatalf("Failed to initialize pricelist API storage: %v", err)
-	}
-
-	// Initialize API storage for /in/ directory orders
-	incomingStorage := storage.NewIncomingOrdersStorage(
-		cfg.FuturAPIURL,
-		"", // No separate API key needed - using user password
-	)
-
-	// Create SFTP server
+	// Create SFTP server (storage instances will be created per user session)
 	sftpServer, err := sftp.NewServer(&sftp.Config{
-		Authenticator:   authenticator,
-		Storage:         pricelistStorage,
-		IncomingStorage: incomingStorage,
-		HostKeyPath:     cfg.SFTPHostKeyPath,
-		Port:            cfg.SFTPPort,
+		Authenticator: authenticator,
+		BaseURL:       cfg.FuturAPIURL,
+		HostKeyPath:   cfg.SFTPHostKeyPath,
+		Port:          cfg.SFTPPort,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create SFTP server: %v", err)
