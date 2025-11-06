@@ -61,31 +61,6 @@ func DownloadPricelist(baseURL, username, apiKey, remotePath string) ([]byte, er
 	return data, nil
 }
 
-// GetPricelistFileInfo returns hardcoded file info for the pricelist file
-func GetPricelistFileInfo(remotePath string) (*FileInfo, error) {
-	// Handle Hinnat directory
-	if remotePath == "/Hinnat" || remotePath == "Hinnat" {
-		return &FileInfo{
-			Name:         "Hinnat",
-			Size:         0,
-			LastModified: time.Now(),
-			IsDir:        true,
-		}, nil
-	}
-
-	// Handle the pricelist file
-	if remotePath == "salhydro_kaikki.zip" || remotePath == "/Hinnat/salhydro_kaikki.zip" {
-		return &FileInfo{
-			Name:         "salhydro_kaikki.zip",
-			Size:         2 * 1024 * 1024, // 2MB
-			LastModified: time.Now(),
-			IsDir:        false,
-		}, nil
-	}
-
-	return nil, fmt.Errorf("file not found: %s", remotePath)
-}
-
 type OrderRequest struct {
 	Username  string `json:"username"`
 	Filename  string `json:"filename"`
