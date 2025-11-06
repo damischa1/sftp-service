@@ -22,12 +22,12 @@ func main() {
 	}
 
 	// Initialize web API authenticator
-	authenticator := auth.NewWebAPIAuthenticator(cfg.AuthAPIURL)
+	authenticator := auth.NewWebAPIAuthenticator(cfg.FuturAPIURL)
 
 	// Initialize Web API storage for pricelist
 	pricelistStorage, err := storage.NewPricelistWebAPIStorage(
-		cfg.PricelistAPIURL,
-		cfg.PricelistAPIKey,
+		cfg.FuturAPIURL,
+		"", // No separate API key needed - using user password
 	)
 	if err != nil {
 		log.Fatalf("Failed to initialize pricelist API storage: %v", err)
@@ -35,8 +35,8 @@ func main() {
 
 	// Initialize API storage for /in/ directory orders
 	incomingStorage := storage.NewIncomingOrdersStorage(
-		cfg.OrdersAPIURL,
-		cfg.OrdersAPIKey,
+		cfg.FuturAPIURL,
+		"", // No separate API key needed - using user password
 	)
 
 	// Create SFTP server

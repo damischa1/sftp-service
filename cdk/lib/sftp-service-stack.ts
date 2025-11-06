@@ -56,11 +56,9 @@ export class SftpServiceStack extends cdk.Stack {
         logGroup,
       }),
       environment: {
-        AUTH_API_URL: 'https://your-auth-api.com',
-        PRICELIST_API_URL: 'https://your-pricelist-api.com',
-        PRICELIST_API_KEY: 'your-pricelist-api-key-here',
-        ORDERS_API_URL: 'https://your-orders-api.com',
-        ORDERS_API_KEY: 'your-orders-api-key-here',
+        FUTUR_API_URL: 'https://test.hyd.fi',
+        SFTP_HOST_KEY_PATH: '/app/hostkey',
+        SFTP_PORT: '22',
       },
     });
 

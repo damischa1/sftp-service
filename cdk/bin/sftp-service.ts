@@ -14,5 +14,5 @@ new SftpServiceStack(app, 'SftpServiceStack', {
     account: account, 
     region: region 
   },
-  description: 'SFTP Service with Fargate, S3, and PostgreSQL',
+  description: 'SFTP Service with Fargate and FUTUR API integration',
 });

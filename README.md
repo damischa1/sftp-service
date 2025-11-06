@@ -1,250 +1,231 @@
-# Rajoitettu SFTP Palvelu
+# SFTP Service with FUTUR API Integration
 
-Go-pohjainen SFTP-palvelin rajoitetuilla käyttöoikeuksilla PostgreSQL-autentikoinnilla ja S3-tallennuksella.
+Go-based SFTP server with limited permissions using FUTUR API for authentication and data operations.
 
-## Käyttäjätietokanta
+## User Authentication
 
-Palvelu käyttää **olemassa olevaa PostgreSQL-tietokantaa** käyttäjätietojen lukemiseen. 
+The service uses **FUTUR API** for user authentication and data operations.
 
-### Palvelun rooli:
-- ✅ **Lukee** käyttäjätiedot olemassa olevasta tietokannasta
-- ✅ **Autentikoi** käyttäjiä SFTP-yhteyksiä varten  
-- ❌ **Ei hallitse** käyttäjiä (tehdään muualla)
+### Service role:
+- ✅ **Authenticates** users via FUTUR API
+- ✅ **Provides** secure SFTP access
+- ✅ **Integrates** with Next.js FUTUR API endpoints
 
-## Käyttöoikeudet
+## User Permissions
 
-Käyttäjillä on seuraavat **rajoitetut oikeudet**:
+Users have the following **limited permissions**:
 
-### ✅ Sallitut toiminnot:
-1. **Juurihakemiston listaus** (`/`) - Näyttää vain `in` ja `Hinnat` kansiot
-2. **Siirtyminen kansioihin**:
-   - `/in/` - sisään tulo kansio (**vain kirjoitus**, max 100KB, PostgreSQL)
-   - `/Hinnat/` - hintatiedostojen kansio (luku/kirjoitus, S3)
-3. **Tiedostojen kirjoittaminen**:
-   - `/in/` → PostgreSQL tietokantaan (max 100KB)
-   - `/Hinnat/` → S3 bucketiin
-4. **Tiedostojen lukeminen** vain `/Hinnat/` kansiosta (S3)
-5. **Kansioiden listaus** `/in/` (PostgreSQL) ja `/Hinnat/` (S3) sisällä
-6. **Uusien alikansioiden luominen** vain `/Hinnat/` sisälle
+### ✅ Allowed operations:
+1. **Root directory listing** (`/`) - Shows only `in` and `Hinnat` folders
+2. **Navigation to directories**:
+   - `/in/` - incoming files directory (**write only**)
+   - `/Hinnat/` - price list directory (read/write)
+3. **File operations**:
+   - `/in/` → Upload files via FUTUR API
+   - `/Hinnat/` → Read price lists via FUTUR API
+4. **Directory listing** for `/in/` and `/Hinnat/`
 
-### ❌ Kielletyt toiminnot:
-- **Ei poisto-oikeuksia** (tiedostot tai kansiot)
-- **Ei uudelleennimeämisoikeuksia**
-- **Ei pääsyä muihin kansioihin** kuin `/in/` ja `/Hinnat/`
-- **Ei kirjoitusoikeuksia juurihakemistoon** (`/`)
-- **Ei kansioiden poisto-oikeuksia**
+### ❌ Forbidden operations:
+- **No delete permissions** (files or directories)
+- **No rename permissions**
+- **No access to other directories** except `/in/` and `/Hinnat/`
+- **No write permissions to root directory** (`/`)
+- **No directory deletion permissions**
 
-## Arkkitehtuuri
+## Architecture
 
 ```
-SFTP Client → SFTP Server (Rajoitetut oikeudet) → PostgreSQL (Auth + /in/ Storage) + S3 (/Hinnat/ Storage)
+SFTP Client → SFTP Server → FUTUR API (Next.js)
 ```
 
-### Kaksoistallennusjärjestelmä
+### API Integration
 
-1. **/in/ kansio** → PostgreSQL tietokanta
-   - Max tiedostokoko: 100KB
-   - Vain kirjoitusoikeudet
-   - Tallennetaan `incoming_files` tauluun
+1. **/in/ directory** → FUTUR Order API
+   - File uploads sent to `/api/futur/order` endpoint
+   - Files processed by Next.js application
 
-2. **/Hinnat/ kansio** → S3 bucket
-   - Normaali tiedostotallennus
-   - Luku- ja kirjoitusoikeudet
-   - Käyttäjäkohtaiset prefiksit
+2. **/Hinnat/ directory** → FUTUR Pricelist API
+   - Price lists fetched from `/api/futur/pricelist` endpoint
+   - User-specific content via API authentication
 
-## S3 Tallennusrakenne (/Hinnat/)
+## API Endpoints
 
-```
-S3 Bucket/
-├── käyttäjä1/
-│   └── Hinnat/
-│       ├── hintalista.csv
-│       └── tarjoukset/
-│           └── tarjous1.pdf
-└── käyttäjä2/
-    └── Hinnat/
-        └── tiedosto2.txt
-```
+### Authentication
+- **POST** `/api/futur/login` - User authentication
+- Headers: `X-ApiKey: {api-key}`
+- Body: `{"username": "user", "password": "pass"}`
 
-## PostgreSQL Tallennusrakenne (/in/)
+### Price Lists  
+- **GET** `/api/futur/pricelist` - Get user's price lists
+- Headers: `X-ApiKey: {api-key}`
 
-```sql
--- incoming_files taulu
-CREATE TABLE incoming_files (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
-    filename VARCHAR(255) NOT NULL,
-    content TEXT NOT NULL,
-    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
+### Orders
+- **POST** `/api/futur/order` - Upload order files  
+- Headers: `X-ApiKey: {api-key}`
+- Body: File content as multipart form data
 
-## Käyttöönoton Pikaohje
+## Quick Setup Guide
 
-### 1. Asenna riippuvuudet
+### 1. Install dependencies
 ```bash
 go mod tidy
 ```
 
-### 2. Konfiguroi ympäristö
+### 2. Configure environment
 ```bash
 cp .env.example .env
-# Muokkaa .env tiedostoa AWS-tunnuksillasi
+# Edit .env file - set FUTUR_API_URL to point to your Next.js application
 ```
 
-### 3. Käynnistä palvelut
+### 3. Generate SSH host key
 ```bash
-docker-compose up -d
+ssh-keygen -t rsa -b 2048 -f hostkey -N ""
 ```
 
-### 4. Olemassa oleva tietokanta
-
-Palvelu odottaa että PostgreSQL-tietokannassa on jo `users` taulu käyttäjätiedoilla:
-
-```sql
--- Tietokannassa tulee olla users taulu tässä muodossa:
--- users (id, username, password_hash, is_active, created_at, updated_at)
-```
-
-### 5. Testaa yhteys
+### 4. Start the service
 ```bash
-sftp -P 2222 käyttäjänimi@localhost
+go run main.go
+# or
+go build -o sftp-service.exe .
+./sftp-service.exe
 ```
 
-## SFTP-komentojen käyttö
-
-### Sallitut komennot:
+### 5. Test connection
 ```bash
-# Listaa juurihakemisto (näyttää vain 'in' ja 'Hinnat')
+sftp -P 2222 username@localhost
+```
+
+## SFTP Commands Usage
+
+### Allowed commands:
+```bash
+# List root directory (shows only 'in' and 'Hinnat')
 ls
 
-# Siirry kansioihin
+# Navigate to directories
 cd in
 cd Hinnat
 
-# Listaa kansion sisältö
+# List directory contents
 ls
 
-# Lataa tiedosto
+# Upload file
 put local_file.txt
 
-# Luo alikansio
-mkdir uusi_kansio
-
-# Lataa tiedosto palvelimelta
+# Download file (from Hinnat only)
 get remote_file.txt
 ```
 
-### Kielletyt komennot (palauttavat virheen):
+### Forbidden commands (return error):
 ```bash
-# Poista tiedosto - EI SALLITTU
-rm tiedosto.txt
+# Delete file - NOT ALLOWED
+rm file.txt
 
-# Uudelleennimeä - EI SALLITTU  
-rename vanha.txt uusi.txt
+# Rename - NOT ALLOWED  
+rename old.txt new.txt
 
-# Poista kansio - EI SALLITTU
-rmdir kansio
+# Delete directory - NOT ALLOWED
+rmdir directory
 
-# Kirjoita juurihakemistoon - EI SALLITTU
-put tiedosto.txt /
+# Write to root directory - NOT ALLOWED
+put file.txt /
 
-# Siirry muihin kansioihin - EI SALLITTU
+# Navigate to other directories - NOT ALLOWED
 cd /tmp
 cd /home
 ```
 
-## Turvallisuusominaisuudet
+## Security Features
 
-- **SSH host key** automaattisesti generoitu ja tallennettu
-- **bcrypt salasanahashit** tietokannassa
-- **Käyttäjäeristys** - jokainen käyttäjä näkee vain omat tiedostonsa
-- **Polkujen validointi** - estää pääsyn kiellettyihin hakemistoihin
-- **Operaatioiden rajoittaminen** - vain lukeminen, kirjoittaminen ja listaus
-- **TLS salaus** kaikille SFTP-yhteyksille
+- **SSH host key** automatically generated and stored
+- **API authentication** via FUTUR API
+- **User isolation** - each user sees only their own data
+- **Path validation** - prevents access to forbidden directories
+- **Operation restrictions** - only reading, writing and listing allowed
+- **TLS encryption** for all SFTP connections
 
-## Lokitiedot ja Seuranta
+## Logging and Monitoring
 
-Palvelu kirjaa kaikki:
-- Autentikoinnin yritykset
-- Tiedosto-operaatiot (onnistuneet ja evätyt)
-- Yhteyksien avaukset ja sulkemiset
-- Käyttöoikeusvirheet
+The service logs all:
+- Authentication attempts
+- File operations (successful and denied)
+- Connection opens and closes
+- Access permission errors
 
 ```bash
-# Katso palvelun lokeja
-docker logs sftp-service
+# View service logs
+tail -f sftp-service.log
 
-# Katso tietokannan lokeja  
-docker logs sftp-postgres
+# Or if running in foreground
+go run main.go
 ```
 
-## Käyttöoikeuksien Testaaminen
+## Testing Permissions
 
 ```bash
-# Yhdistä SFTP:llä
+# Connect via SFTP
 sftp -P 2222 testuser@localhost
 
-# Testaa sallittuja operaatioita
-ls                    # Tulostaa: in  Hinnat
-cd in                 # Onnistuu
-put test.txt          # Onnistuu
-ls                    # Näyttää tiedostot
-cd /Hinnat            # Onnistuu
-mkdir uusi_kansio     # Onnistuu
+# Test allowed operations
+ls                    # Output: in  Hinnat
+cd in                 # Success
+put test.txt          # Success
+ls                    # Shows files
+cd /Hinnat            # Success
+get pricelist.csv     # Success
 
-# Testaa kiellettyjä operaatioita
-rm test.txt           # Virhe: access denied
-cd /tmp               # Virhe: access denied
-put test.txt /        # Virhe: write not allowed
+# Test forbidden operations
+rm test.txt           # Error: access denied
+cd /tmp               # Error: access denied
+put test.txt /        # Error: write not allowed
 ```
 
-## Vianetsintä
+## Troubleshooting
 
-### Yleiset ongelmat:
+### Common issues:
 
-1. **Yhteys evätty**: Tarkista portti 2222 ja palomuuri
-2. **Autentikointi epäonnistui**: Varmista käyttäjätunnus ja salasana
-3. **Tiedoston lataus epäonnistui**: Tarkista AWS-tunnukset ja S3-bucket
-4. **"Access denied" virheet**: Normaali käyttäytyminen rajoitetuille poluille
+1. **Connection denied**: Check port 2222 and firewall
+2. **Authentication failed**: Verify username and password with FUTUR API
+3. **File upload failed**: Check FUTUR_API_URL configuration and API availability
+4. **"Access denied" errors**: Normal behavior for restricted paths
 
-### Lokien tarkistus:
+### Log checking:
 ```bash
-# Palvelun lokeja
-docker logs -f sftp-service
+# Service logs
+tail -f sftp-service.log
 
-# Tietokantaa
-docker logs -f sftp-postgres
+# Check if service is running
+ps aux | grep sftp-service
 ```
 
 ## ☁️ AWS Deployment (CDK)
 
-Projekti sisältää valmiin AWS CDK -konfiguraation tuotantokäyttöönottoa varten.
+The project includes ready AWS CDK configuration for production deployment.
 
-### AWS-infrastruktuuri:
-- **ECS Fargate** - Containerien ajamiseen
-- **PostgreSQL RDS** - Käyttäjätiedot ja saapuvat tilaukset
-- **S3 Bucket** - Hinnastotiedostot
-- **Network Load Balancer** - SFTP-liikenteen jakamiseen
-- **VPC** - Verkko-infrastruktuuri
+### AWS Infrastructure:
+- **ECS Fargate** - Container execution
+- **Network Load Balancer** - SFTP traffic distribution
+- **VPC** - Network infrastructure
 
-### Pikaopas AWS-käyttöönottoon:
+### Quick AWS deployment guide:
 
 ```bash
-# Siirry CDK-kansioon
+# Go to CDK directory
 cd cdk
 
-# Käynnistä automaattinen käyttöönotto (Windows)
-.\deploy.ps1 -Region "eu-west-1"
+# Install dependencies
+npm install
 
-# Käynnistä automaattinen käyttöönotto (Linux/MacOS)  
-chmod +x deploy.sh
-./deploy.sh
+# Bootstrap CDK (first time only)
+cdk bootstrap
+
+# Deploy the stack
+cdk deploy
 ```
 
-Katso täydelliset ohjeet: [`cdk/README.md`](cdk/README.md)
+See complete instructions: [`cdk/README.md`](cdk/README.md)
 
-### AWS-kustannukset (arvio):
-- **~$78/kuukausi** peruskäytössä (EU-West-1)
-- Sisältää: Fargate, RDS, Load Balancer, NAT Gateway
-- Ei sisällä: S3-tallennusta ja tiedonsiirtoa
+### AWS costs (estimate):
+- **~$50/month** for basic usage (EU-West-1)
+- Includes: Fargate, Load Balancer, NAT Gateway
+- External: Data transfer costs for FUTUR API calls

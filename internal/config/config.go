@@ -8,11 +8,7 @@ import (
 )
 
 type Config struct {
-	AuthAPIURL      string
-	PricelistAPIURL string
-	PricelistAPIKey string
-	OrdersAPIURL    string
-	OrdersAPIKey    string
+	FuturAPIURL     string
 	SFTPHostKeyPath string
 	SFTPPort        string
 }
@@ -23,30 +19,14 @@ func LoadConfig() (*Config, error) {
 	_ = godotenv.Load()
 
 	config := &Config{
-		AuthAPIURL:      getEnv("AUTH_API_URL", "http://localhost:3000"),
-		PricelistAPIURL: getEnv("PRICELIST_API_URL", "http://localhost:3000"),
-		PricelistAPIKey: getEnv("PRICELIST_API_KEY", ""),
-		OrdersAPIURL:    getEnv("ORDERS_API_URL", "http://localhost:3000"),
-		OrdersAPIKey:    getEnv("ORDERS_API_KEY", ""),
+		FuturAPIURL:     getEnv("FUTUR_API_URL", "http://localhost:3000"),
 		SFTPHostKeyPath: getEnv("SFTP_HOST_KEY_PATH", "./host_key"),
 		SFTPPort:        getEnv("SFTP_PORT", "2222"),
 	}
 
 	// Validate required configuration
-	if config.AuthAPIURL == "" {
-		return nil, fmt.Errorf("AUTH_API_URL is required")
-	}
-	if config.PricelistAPIURL == "" {
-		return nil, fmt.Errorf("PRICELIST_API_URL is required")
-	}
-	if config.PricelistAPIKey == "" {
-		return nil, fmt.Errorf("PRICELIST_API_KEY is required")
-	}
-	if config.OrdersAPIURL == "" {
-		return nil, fmt.Errorf("ORDERS_API_URL is required")
-	}
-	if config.OrdersAPIKey == "" {
-		return nil, fmt.Errorf("ORDERS_API_KEY is required")
+	if config.FuturAPIURL == "" {
+		return nil, fmt.Errorf("FUTUR_API_URL is required")
 	}
 
 	return config, nil
