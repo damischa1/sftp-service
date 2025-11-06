@@ -32,12 +32,15 @@ COPY --from=builder /app/sftp-service .
 # Create directory for host key
 RUN mkdir -p /data
 
+# Copy host key if it exists in build context (optional)
+COPY host_key* /data/
+
 # Expose SFTP port
-EXPOSE 2222
+EXPOSE 22
 
 # Set environment variables
 ENV SFTP_HOST_KEY_PATH=/data/host_key
-ENV SFTP_PORT=2222
+ENV SFTP_PORT=22
 
 # Run the binary
 CMD ["./sftp-service"]
