@@ -18,6 +18,8 @@ type FileInfo struct {
 type PricelistWebAPIStorage struct {
 	baseURL    string
 	apiKey     string
+	userApiKey string // User's password used as API key
+	username   string // Current user
 	timeout    time.Duration
 	httpClient *http.Client
 }
@@ -41,36 +43,41 @@ func NewPricelistWebAPIStorage(baseURL, apiKey string) (*PricelistWebAPIStorage,
 	}, nil
 }
 
-// getUserPath creates a user-specific path (not used for API, but kept for interface compatibility)
-func (s *PricelistWebAPIStorage) getUserPath(username, path string) string {
-	return fmt.Sprintf("%s/%s", username, path)
+// SetApiKey sets the user's API key (password)
+func (s *PricelistWebAPIStorage) SetApiKey(apiKey string) {
+	s.userApiKey = apiKey
+}
+
+// SetUsername sets the current username
+func (s *PricelistWebAPIStorage) SetUsername(username string) {
+	s.username = username
 }
 
 // UploadFile is disabled for pricelist API - pricelists are read-only
-func (s *PricelistWebAPIStorage) UploadFile(username, remotePath string, content io.Reader) error {
-	log.Printf("Upload attempt blocked for pricelist API: %s/%s", username, remotePath)
+func (s *PricelistWebAPIStorage) UploadFile(remotePath string, content io.Reader) error {
+	log.Printf("Upload attempt blocked for pricelist API: %s/%s", s.username, remotePath)
 	return fmt.Errorf("upload not allowed for pricelist files")
 }
 
 // DownloadFile fetches pricelist data from the web API (with fallback to mock data)
-func (s *PricelistWebAPIStorage) DownloadFile(username, remotePath string) ([]byte, error) {
+func (s *PricelistWebAPIStorage) DownloadFile(remotePath string) ([]byte, error) {
 	// Only allow access to the specific pricelist file
 	if remotePath != "/Hinnat/salhydro_kaikki.zip" && remotePath != "salhydro_kaikki.zip" {
 		return nil, fmt.Errorf("access denied: only salhydro_kaikki.zip is available")
 	}
 
-	url := fmt.Sprintf("%s/api/pricelist/download", s.baseURL)
+	url := fmt.Sprintf("%s/api/futur/pricelist", s.baseURL)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Printf("HTTP request creation failed, using mock data: %v", err)
 		return s.getMockPricelistData(), nil
 	}
 
-	// Add API key to request headers
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.apiKey))
+	// Add API key from user (password) to request headers
+	req.Header.Set("X-ApiKey", s.userApiKey)
 	req.Header.Set("User-Agent", "SFTP-Service/1.0")
 
-	log.Printf("Downloading pricelist for user %s from web API: %s", username, url)
+	log.Printf("Downloading pricelist for user %s from web API: %s", s.username, url)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -112,14 +119,14 @@ Updated: ` + time.Now().Format("2006-01-02 15:04:05") + `
 }
 
 // DeleteFile is disabled for pricelist API - pricelists are read-only
-func (s *PricelistWebAPIStorage) DeleteFile(username, remotePath string) error {
-	log.Printf("Delete attempt blocked for pricelist API: %s/%s", username, remotePath)
+func (s *PricelistWebAPIStorage) DeleteFile(remotePath string) error {
+	log.Printf("Delete attempt blocked for pricelist API: %s/%s", s.username, remotePath)
 	return fmt.Errorf("delete not allowed for pricelist files")
 }
 
 // ListFiles lists available pricelist files for a user (no API call needed for listing)
-func (s *PricelistWebAPIStorage) ListFiles(username, remotePath string) ([]FileInfo, error) {
-	log.Printf("Listing pricelist files for user %s at path %s", username, remotePath)
+func (s *PricelistWebAPIStorage) ListFiles(remotePath string) ([]FileInfo, error) {
+	log.Printf("Listing pricelist files for user %s at path %s", s.username, remotePath)
 
 	// Return hardcoded file list - API call only happens during download
 	return s.getFallbackFileList(), nil
@@ -138,21 +145,21 @@ func (s *PricelistWebAPIStorage) getFallbackFileList() []FileInfo {
 }
 
 // CreateDirectory is disabled for pricelist API - pricelists are read-only
-func (s *PricelistWebAPIStorage) CreateDirectory(username, remotePath string) error {
-	log.Printf("Directory creation blocked for pricelist API: %s/%s", username, remotePath)
-	return fmt.Errorf("directory creation not allowed for pricelist files")
+func (s *PricelistWebAPIStorage) CreateDirectory(remotePath string) error {
+	log.Printf("Directory creation blocked for pricelist API: %s/%s", s.username, remotePath)
+	return fmt.Errorf("directory creation not allowed for pricelist storage")
 }
 
 // FileExists checks if the pricelist file exists (always true for salhydro_kaikki.zip)
-func (s *PricelistWebAPIStorage) FileExists(username, remotePath string) (bool, error) {
+func (s *PricelistWebAPIStorage) FileExists(remotePath string) (bool, error) {
 	// Only the specific pricelist file exists
 	exists := remotePath == "salhydro_kaikki.zip"
-	log.Printf("File exists check for %s/%s: %v", username, remotePath, exists)
+	log.Printf("File exists check for %s/%s: %v", s.username, remotePath, exists)
 	return exists, nil
 }
 
 // GetFileInfo returns information about the pricelist file
-func (s *PricelistWebAPIStorage) GetFileInfo(username, remotePath string) (*FileInfo, error) {
+func (s *PricelistWebAPIStorage) GetFileInfo(remotePath string) (*FileInfo, error) {
 	if remotePath != "salhydro_kaikki.zip" {
 		return nil, fmt.Errorf("file not found: %s", remotePath)
 	}

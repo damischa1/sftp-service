@@ -30,6 +30,7 @@ type AuthResponse struct {
 type User struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+	ApiKey   string `json:"api_key"` // Store password for API calls
 }
 
 // NewWebAPIAuthenticator creates a new web API authenticator
@@ -51,6 +52,7 @@ func (w *WebAPIAuthenticator) AuthenticateUser(username, password string) (*User
 		return &User{
 			ID:       "1",
 			Username: username,
+			ApiKey:   password, // Store password as API key
 		}, nil
 	}
 
@@ -109,6 +111,7 @@ func (w *WebAPIAuthenticator) AuthenticateUser(username, password string) (*User
 	return &User{
 		ID:       authResp.UserID,
 		Username: username,
+		ApiKey:   password, // Store password as API key for subsequent API calls
 	}, nil
 }
 

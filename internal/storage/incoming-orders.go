@@ -14,6 +14,8 @@ import (
 type IncomingOrdersStorage struct {
 	apiURL     string
 	apiKey     string
+	userApiKey string // User's password used as API key
+	username   string // Current user
 	httpClient *http.Client
 	mutex      sync.RWMutex
 }
@@ -24,6 +26,16 @@ type OrderRequest struct {
 	Content   string `json:"content"`
 	Timestamp string `json:"timestamp"`
 	FileSize  int    `json:"file_size"`
+}
+
+// SetApiKey sets the user's API key (password)
+func (s *IncomingOrdersStorage) SetApiKey(apiKey string) {
+	s.userApiKey = apiKey
+}
+
+// SetUsername sets the current username
+func (s *IncomingOrdersStorage) SetUsername(username string) {
+	s.username = username
 }
 
 // NewIncomingOrdersStorage creates a new API-based storage for /in/ directory orders
@@ -38,7 +50,7 @@ func NewIncomingOrdersStorage(apiURL, apiKey string) *IncomingOrdersStorage {
 }
 
 // StoreIncomingFile sends file content directly to HTTP API (no local storage)
-func (s *IncomingOrdersStorage) StoreIncomingFile(username, filename, content string) error {
+func (s *IncomingOrdersStorage) StoreIncomingFile(filename, content string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -51,24 +63,24 @@ func (s *IncomingOrdersStorage) StoreIncomingFile(username, filename, content st
 	timestamp := time.Now().Format("20060102_150405")
 
 	// Send order directly to HTTP API (no local storage)
-	if err := s.sendOrderToAPI(username, filename, content, timestamp); err != nil {
+	if err := s.sendOrderToAPI(filename, content, timestamp); err != nil {
 		log.Printf("Error sending order to API: %v", err)
 		return fmt.Errorf("failed to send order to API: %w", err)
 	}
 
-	log.Printf("Successfully processed incoming order: %s/%s (%d bytes)", username, filename, len(content))
+	log.Printf("Successfully processed incoming order: %s/%s (%d bytes)", s.username, filename, len(content))
 	return nil
 }
 
 // sendOrderToAPI sends the order data to the HTTP API (with mock fallback)
-func (s *IncomingOrdersStorage) sendOrderToAPI(username, filename, content, timestamp string) error {
+func (s *IncomingOrdersStorage) sendOrderToAPI(filename, content, timestamp string) error {
 	if s.apiURL == "" {
 		log.Printf("API URL not configured, using mock processing")
-		return s.processMockOrder(username, filename, content, timestamp)
+		return s.processMockOrder(s.username, filename, content, timestamp)
 	}
 
 	orderReq := OrderRequest{
-		Username:  username,
+		Username:  s.username,
 		Filename:  filename,
 		Content:   content,
 		Timestamp: timestamp,
@@ -78,41 +90,38 @@ func (s *IncomingOrdersStorage) sendOrderToAPI(username, filename, content, time
 	jsonData, err := json.Marshal(orderReq)
 	if err != nil {
 		log.Printf("Failed to marshal order, using mock processing: %v", err)
-		return s.processMockOrder(username, filename, content, timestamp)
+		return s.processMockOrder(s.username, filename, content, timestamp)
 	}
 
-	url := fmt.Sprintf("%s/api/orders/incoming", s.apiURL)
+	url := fmt.Sprintf("%s/api/futur/order", s.apiURL)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("Failed to create HTTP request, using mock processing: %v", err)
-		return s.processMockOrder(username, filename, content, timestamp)
+		return s.processMockOrder(s.username, filename, content, timestamp)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "SFTP-Service/1.0")
+	req.Header.Set("X-ApiKey", s.userApiKey)
 
-	if s.apiKey != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.apiKey))
-	}
-
-	log.Printf("Sending order to API: %s (user: %s, file: %s)", url, username, filename)
+	log.Printf("Sending order to API: %s (user: %s, file: %s)", url, s.username, filename)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		log.Printf("HTTP request failed, using mock processing: %v", err)
-		return s.processMockOrder(username, filename, content, timestamp)
+		return s.processMockOrder(s.username, filename, content, timestamp)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Failed to read response, using mock processing: %v", err)
-		return s.processMockOrder(username, filename, content, timestamp)
+		return s.processMockOrder(s.username, filename, content, timestamp)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("API request failed: HTTP %d - %s, using mock processing", resp.StatusCode, string(body))
-		return s.processMockOrder(username, filename, content, timestamp)
+		return s.processMockOrder(s.username, filename, content, timestamp)
 	}
 
 	log.Printf("Order successfully sent to API: %s", string(body))
@@ -132,7 +141,7 @@ func (s *IncomingOrdersStorage) processMockOrder(username, filename, content, ti
 }
 
 // FileExists checks if incoming file exists (always false since no local storage)
-func (s *IncomingOrdersStorage) FileExists(username, filename string) (bool, error) {
+func (s *IncomingOrdersStorage) FileExists(filename string) (bool, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
@@ -142,7 +151,7 @@ func (s *IncomingOrdersStorage) FileExists(username, filename string) (bool, err
 }
 
 // ListIncomingFiles returns an empty list since files are sent directly to API
-func (s *IncomingOrdersStorage) ListIncomingFiles(username string) ([]IncomingFileInfo, error) {
+func (s *IncomingOrdersStorage) ListIncomingFiles() ([]IncomingFileInfo, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 

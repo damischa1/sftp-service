@@ -19,34 +19,46 @@ type APIFileSystem struct {
 	storage         PricelistStorage
 	incomingStorage IncomingOrdersStorage // File storage for /in/ directory orders
 	username        string
+	apiKey          string   // API key for authenticated calls
 	allowedDirs     []string // Allowed directories for this user
 	allowedOps      []string // Allowed operations
 }
 
 // IncomingOrdersStorage interface for file storage (/in/ directory orders)
 type IncomingOrdersStorage interface {
-	StoreIncomingFile(username, filename, content string) error
-	FileExists(username, filename string) (bool, error)
-	ListIncomingFiles(username string) ([]storage.IncomingFileInfo, error)
+	SetApiKey(apiKey string)
+	SetUsername(username string)
+	StoreIncomingFile(filename, content string) error
+	FileExists(filename string) (bool, error)
+	ListIncomingFiles() ([]storage.IncomingFileInfo, error)
 }
 
 // PricelistStorage interface defines the methods needed for pricelist file operations
 type PricelistStorage interface {
-	UploadFile(username, remotePath string, content io.Reader) error
-	DownloadFile(username, remotePath string) ([]byte, error)
-	DeleteFile(username, remotePath string) error
-	ListFiles(username, remotePath string) ([]storage.FileInfo, error)
-	CreateDirectory(username, remotePath string) error
-	FileExists(username, remotePath string) (bool, error)
-	GetFileInfo(username, remotePath string) (*storage.FileInfo, error)
+	SetApiKey(apiKey string)
+	SetUsername(username string)
+	UploadFile(remotePath string, content io.Reader) error
+	DownloadFile(remotePath string) ([]byte, error)
+	DeleteFile(remotePath string) error
+	ListFiles(remotePath string) ([]storage.FileInfo, error)
+	CreateDirectory(remotePath string) error
+	FileExists(remotePath string) (bool, error)
+	GetFileInfo(remotePath string) (*storage.FileInfo, error)
 }
 
 // NewAPIFileSystem creates a new API-backed file system with restricted access
-func NewAPIFileSystem(storage PricelistStorage, incomingStorage IncomingOrdersStorage, username string) *APIFileSystem {
+func NewAPIFileSystem(storage PricelistStorage, incomingStorage IncomingOrdersStorage, username, apiKey string) *APIFileSystem {
+	// Set API key and username for both storages
+	storage.SetApiKey(apiKey)
+	storage.SetUsername(username)
+	incomingStorage.SetApiKey(apiKey)
+	incomingStorage.SetUsername(username)
+
 	return &APIFileSystem{
 		storage:         storage,
 		incomingStorage: incomingStorage,
-		username:        username,
+		username:        username,                                  // Keep for now, can be removed later
+		apiKey:          apiKey,                                    // Keep for now, can be removed later
 		allowedDirs:     []string{"/", "/in", "/Hinnat"},           // Only root, in, and Hinnat directories
 		allowedOps:      []string{"list", "read", "write-in-only"}, // List and read everywhere, write only to /in
 	}
@@ -143,7 +155,7 @@ func (fs *APIFileSystem) Stat(r *sftp.Request) (os.FileInfo, error) {
 	// Handle files in /Hinnat directory
 	if strings.HasPrefix(path, "/Hinnat/") {
 		filename := strings.TrimPrefix(path, "/Hinnat/")
-		fileInfo, err := fs.storage.GetFileInfo(fs.username, filename)
+		fileInfo, err := fs.storage.GetFileInfo(filename)
 		if err != nil {
 			return nil, err
 		}
@@ -195,7 +207,7 @@ func (fs *APIFileSystem) Fileread(r *sftp.Request) (io.ReaderAt, error) {
 		return nil, fmt.Errorf("access denied: /in/ directory is write-only")
 	}
 
-	data, err := fs.storage.DownloadFile(fs.username, r.Filepath)
+	data, err := fs.storage.DownloadFile(r.Filepath)
 	if err != nil {
 		return nil, err
 	}
@@ -218,16 +230,14 @@ func (fs *APIFileSystem) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 		filename := filepath.Base(r.Filepath)
 		return &incomingWriterAt{
 			incomingStorage: fs.incomingStorage,
-			username:        fs.username,
 			filename:        filename,
 		}, nil
 	}
 
 	// Handle /Hinnat/ directory (Web API storage)
 	return &apiWriterAt{
-		storage:  fs.storage,
-		username: fs.username,
-		path:     r.Filepath,
+		storage: fs.storage,
+		path:    r.Filepath,
 	}, nil
 }
 
@@ -252,7 +262,7 @@ func (fs *APIFileSystem) Filecmd(r *sftp.Request) error {
 			log.Printf("Mkdir denied: user %s tried to create directory %s", fs.username, r.Filepath)
 			return fmt.Errorf("access denied: directory creation not allowed in this location")
 		}
-		return fs.storage.CreateDirectory(fs.username, r.Filepath)
+		return fs.storage.CreateDirectory(r.Filepath)
 	case "Rename":
 		// Deny all rename operations
 		return fmt.Errorf("access denied: rename operations not allowed")
@@ -308,7 +318,7 @@ func (fs *APIFileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 		}
 	}
 
-	files, err := fs.storage.ListFiles(fs.username, r.Filepath)
+	files, err := fs.storage.ListFiles(r.Filepath)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +338,7 @@ func (fs *APIFileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 
 // listHinnatDirectory returns files inside /Hinnat directory
 func (fs *APIFileSystem) listHinnatDirectory() (sftp.ListerAt, error) {
-	files, err := fs.storage.ListFiles(fs.username, "/Hinnat")
+	files, err := fs.storage.ListFiles("/Hinnat")
 	if err != nil {
 		return nil, err
 	}
@@ -416,10 +426,9 @@ func (r *bytesReaderAt) ReadAt(p []byte, off int64) (int, error) {
 
 // apiWriterAt implements io.WriterAt for API uploads
 type apiWriterAt struct {
-	storage  PricelistStorage
-	username string
-	path     string
-	data     []byte
+	storage PricelistStorage
+	path    string
+	data    []byte
 }
 
 func (w *apiWriterAt) WriteAt(p []byte, off int64) (int, error) {
@@ -437,7 +446,7 @@ func (w *apiWriterAt) WriteAt(p []byte, off int64) (int, error) {
 
 func (w *apiWriterAt) Close() error {
 	if len(w.data) > 0 {
-		return w.storage.UploadFile(w.username, w.path, strings.NewReader(string(w.data)))
+		return w.storage.UploadFile(w.path, strings.NewReader(string(w.data)))
 	}
 	return nil
 }
@@ -445,7 +454,6 @@ func (w *apiWriterAt) Close() error {
 // incomingWriterAt implements io.WriterAt for API /in/ directory
 type incomingWriterAt struct {
 	incomingStorage IncomingOrdersStorage
-	username        string
 	filename        string
 	data            []byte
 }
@@ -466,7 +474,7 @@ func (w *incomingWriterAt) WriteAt(p []byte, off int64) (int, error) {
 func (w *incomingWriterAt) Close() error {
 	if len(w.data) > 0 {
 		content := string(w.data)
-		return w.incomingStorage.StoreIncomingFile(w.username, w.filename, content)
+		return w.incomingStorage.StoreIncomingFile(w.filename, content)
 	}
 	return nil
 }

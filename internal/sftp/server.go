@@ -93,11 +93,12 @@ func (s *Server) passwordCallback(conn ssh.ConnMetadata, password []byte) (*ssh.
 
 	log.Printf("Authentication successful for user: %s", username)
 
-	// Store username and user ID in permissions for later use
+	// Store username, user ID and API key in permissions for later use
 	return &ssh.Permissions{
 		Extensions: map[string]string{
 			"username": user.Username,
 			"user_id":  user.ID,
+			"api_key":  user.ApiKey,
 		},
 	}, nil
 }
@@ -113,8 +114,9 @@ func (s *Server) handleConnection(conn net.Conn, sshConfig *ssh.ServerConfig) {
 	}
 	defer sshConn.Close()
 
-	// Get username from permissions
+	// Get username and API key from permissions
 	username := sshConn.Permissions.Extensions["username"]
+	apiKey := sshConn.Permissions.Extensions["api_key"]
 	log.Printf("New SSH connection from %s for user %s", conn.RemoteAddr(), username)
 
 	// Handle global requests
@@ -140,7 +142,7 @@ func (s *Server) handleConnection(conn net.Conn, sshConfig *ssh.ServerConfig) {
 				case "subsystem":
 					if string(req.Payload[4:]) == "sftp" {
 						req.Reply(true, nil)
-						s.handleSFTP(channel, username)
+						s.handleSFTP(channel, username, apiKey)
 					} else {
 						req.Reply(false, nil)
 					}
@@ -152,13 +154,13 @@ func (s *Server) handleConnection(conn net.Conn, sshConfig *ssh.ServerConfig) {
 	}
 }
 
-func (s *Server) handleSFTP(channel ssh.Channel, username string) {
+func (s *Server) handleSFTP(channel ssh.Channel, username, apiKey string) {
 	defer channel.Close()
 
 	log.Printf("Starting SFTP session for user: %s", username)
 
 	// Create API-backed file system for the user
-	filesystem := NewAPIFileSystem(s.storage, s.incomingStorage, username)
+	filesystem := NewAPIFileSystem(s.storage, s.incomingStorage, username, apiKey)
 
 	// Create handlers
 	handlers := sftp.Handlers{
