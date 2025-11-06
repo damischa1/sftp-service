@@ -16,12 +16,12 @@ import (
 
 // APIFileSystem implements sftp.FileLister, sftp.FileReader, sftp.FileWriter, sftp.FileCmder, and sftp.FileStater interfaces
 type APIFileSystem struct {
-	storage         PricelistStorage
-	incomingStorage IncomingOrdersStorage // File storage for /in/ directory orders
-	username        string
-	apiKey          string   // API key for authenticated calls
-	allowedDirs     []string // Allowed directories for this user
-	allowedOps      []string // Allowed operations
+	pricelistStorage PricelistStorage
+	incomingStorage  IncomingOrdersStorage // File storage for /in/ directory orders
+	username         string
+	apiKey           string   // API key for authenticated calls
+	allowedDirs      []string // Allowed directories for this user
+	allowedOps       []string // Allowed operations
 }
 
 // IncomingOrdersStorage interface for file storage (/in/ directory orders)
@@ -43,19 +43,18 @@ type PricelistStorage interface {
 }
 
 // NewAPIFileSystem creates a new API-backed file system with restricted access
-func NewAPIFileSystem(baseStorage *storage.PricelistWebAPIStorage, incomingStorage IncomingOrdersStorage, username, apiKey string) *APIFileSystem {
+func NewAPIFileSystem(pricelistStorage PricelistStorage, incomingStorage IncomingOrdersStorage, username, apiKey string) *APIFileSystem {
 	// Create user-specific wrapper for pricelist storage
-	userStorage := storage.NewUserPricelistStorage(baseStorage, username, apiKey)
 
 	// IncomingStorage is already configured with user details when created
 
 	return &APIFileSystem{
-		storage:         userStorage,
-		incomingStorage: incomingStorage,
-		username:        username,                                  // Keep for now, can be removed later
-		apiKey:          apiKey,                                    // Keep for now, can be removed later
-		allowedDirs:     []string{"/", "/in", "/Hinnat"},           // Only root, in, and Hinnat directories
-		allowedOps:      []string{"list", "read", "write-in-only"}, // List and read everywhere, write only to /in
+		pricelistStorage: pricelistStorage,
+		incomingStorage:  incomingStorage,
+		username:         username,                                  // Keep for now, can be removed later
+		apiKey:           apiKey,                                    // Keep for now, can be removed later
+		allowedDirs:      []string{"/", "/in", "/Hinnat"},           // Only root, in, and Hinnat directories
+		allowedOps:       []string{"list", "read", "write-in-only"}, // List and read everywhere, write only to /in
 	}
 }
 
@@ -150,7 +149,7 @@ func (fs *APIFileSystem) Stat(r *sftp.Request) (os.FileInfo, error) {
 	// Handle files in /Hinnat directory
 	if strings.HasPrefix(path, "/Hinnat/") {
 		filename := strings.TrimPrefix(path, "/Hinnat/")
-		fileInfo, err := fs.storage.GetFileInfo(filename)
+		fileInfo, err := fs.pricelistStorage.GetFileInfo(filename)
 		if err != nil {
 			return nil, err
 		}
@@ -202,7 +201,7 @@ func (fs *APIFileSystem) Fileread(r *sftp.Request) (io.ReaderAt, error) {
 		return nil, fmt.Errorf("access denied: /in/ directory is write-only")
 	}
 
-	data, err := fs.storage.DownloadFile(r.Filepath)
+	data, err := fs.pricelistStorage.DownloadFile(r.Filepath)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +230,7 @@ func (fs *APIFileSystem) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 
 	// Handle /Hinnat/ directory (Web API storage)
 	return &apiWriterAt{
-		storage: fs.storage,
+		storage: fs.pricelistStorage,
 		path:    r.Filepath,
 	}, nil
 }
@@ -257,7 +256,7 @@ func (fs *APIFileSystem) Filecmd(r *sftp.Request) error {
 			log.Printf("Mkdir denied: user %s tried to create directory %s", fs.username, r.Filepath)
 			return fmt.Errorf("access denied: directory creation not allowed in this location")
 		}
-		return fs.storage.CreateDirectory(r.Filepath)
+		return fs.pricelistStorage.CreateDirectory(r.Filepath)
 	case "Rename":
 		// Deny all rename operations
 		return fmt.Errorf("access denied: rename operations not allowed")
@@ -313,7 +312,7 @@ func (fs *APIFileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 		}
 	}
 
-	files, err := fs.storage.ListFiles(r.Filepath)
+	files, err := fs.pricelistStorage.ListFiles(r.Filepath)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +332,7 @@ func (fs *APIFileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 
 // listHinnatDirectory returns files inside /Hinnat directory
 func (fs *APIFileSystem) listHinnatDirectory() (sftp.ListerAt, error) {
-	files, err := fs.storage.ListFiles("/Hinnat")
+	files, err := fs.pricelistStorage.ListFiles("/Hinnat")
 	if err != nil {
 		return nil, err
 	}

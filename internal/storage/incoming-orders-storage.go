@@ -62,11 +62,10 @@ func (s *IncomingOrdersStorage) StoreIncomingFile(filename, content string) erro
 	return nil
 }
 
-// sendOrderToAPI sends the order data to the HTTP API (with mock fallback)
+// sendOrderToAPI sends the order data to the HTTP API
 func (s *IncomingOrdersStorage) sendOrderToAPI(filename, content, timestamp string) error {
 	if s.apiURL == "" {
-		log.Printf("API URL not configured, using mock processing")
-		return s.processMockOrder(s.username, filename, content, timestamp)
+		return fmt.Errorf("API URL not configured")
 	}
 
 	orderReq := OrderRequest{
@@ -79,15 +78,13 @@ func (s *IncomingOrdersStorage) sendOrderToAPI(filename, content, timestamp stri
 
 	jsonData, err := json.Marshal(orderReq)
 	if err != nil {
-		log.Printf("Failed to marshal order, using mock processing: %v", err)
-		return s.processMockOrder(s.username, filename, content, timestamp)
+		return fmt.Errorf("failed to marshal order: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/api/futur/order", s.apiURL)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Printf("Failed to create HTTP request, using mock processing: %v", err)
-		return s.processMockOrder(s.username, filename, content, timestamp)
+		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -98,35 +95,20 @@ func (s *IncomingOrdersStorage) sendOrderToAPI(filename, content, timestamp stri
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		log.Printf("HTTP request failed, using mock processing: %v", err)
-		return s.processMockOrder(s.username, filename, content, timestamp)
+		return fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to read response, using mock processing: %v", err)
-		return s.processMockOrder(s.username, filename, content, timestamp)
+		return fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("API request failed: HTTP %d - %s, using mock processing", resp.StatusCode, string(body))
-		return s.processMockOrder(s.username, filename, content, timestamp)
+		return fmt.Errorf("API request failed: HTTP %d - %s", resp.StatusCode, string(body))
 	}
 
 	log.Printf("Order successfully sent to API: %s", string(body))
-	return nil
-}
-
-// processMockOrder simulates order processing for testing
-func (s *IncomingOrdersStorage) processMockOrder(username, filename, content, timestamp string) error {
-	log.Printf("MOCK ORDER PROCESSING:")
-	log.Printf("  User: %s", username)
-	log.Printf("  File: %s", filename)
-	log.Printf("  Size: %d bytes", len(content))
-	log.Printf("  Timestamp: %s", timestamp)
-	log.Printf("  Content preview: %.100s...", content)
-	log.Printf("Order processed successfully (mock mode)")
 	return nil
 }
 

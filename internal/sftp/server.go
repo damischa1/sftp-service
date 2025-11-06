@@ -157,11 +157,7 @@ func (s *Server) handleSFTP(channel ssh.Channel, username, apiKey string) {
 	log.Printf("Starting SFTP session for user: %s", username)
 
 	// Create storage instances for this user session
-	pricelistStorage, err := storage.NewPricelistWebAPIStorage(s.baseURL, "")
-	if err != nil {
-		log.Printf("Failed to create pricelist storage for %s: %v", username, err)
-		return
-	}
+	pricelistStorage := storage.NewPricelistWebAPIStorage(s.baseURL, username, apiKey)
 
 	incomingStorage := storage.NewIncomingOrdersStorage(s.baseURL, username, apiKey)
 

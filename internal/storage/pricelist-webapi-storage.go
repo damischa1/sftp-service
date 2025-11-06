@@ -17,77 +17,25 @@ type FileInfo struct {
 
 type PricelistWebAPIStorage struct {
 	baseURL    string
+	username   string
 	apiKey     string
 	timeout    time.Duration
 	httpClient *http.Client
 }
 
 // NewPricelistWebAPIStorage creates a new web API storage client for pricelist files
-func NewPricelistWebAPIStorage(baseURL, apiKey string) (*PricelistWebAPIStorage, error) {
-	if baseURL == "" {
-		return nil, fmt.Errorf("base URL is required")
-	}
+func NewPricelistWebAPIStorage(baseURL, username, apiKey string) *PricelistWebAPIStorage {
 	// API key is optional - user's password will be used as X-ApiKey header
 
 	return &PricelistWebAPIStorage{
-		baseURL: baseURL,
-		apiKey:  apiKey, // This can be empty now
-		timeout: 30 * time.Second,
+		baseURL:  baseURL,
+		username: username,
+		apiKey:   apiKey, // This can be empty now
+		timeout:  30 * time.Second,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-	}, nil
-}
-
-// UserPricelistStorage wraps PricelistWebAPIStorage with user-specific context
-type UserPricelistStorage struct {
-	storage  *PricelistWebAPIStorage
-	username string
-	apiKey   string
-}
-
-// NewUserPricelistStorage creates a user-specific wrapper around PricelistWebAPIStorage
-func NewUserPricelistStorage(storage *PricelistWebAPIStorage, username, apiKey string) *UserPricelistStorage {
-	return &UserPricelistStorage{
-		storage:  storage,
-		username: username,
-		apiKey:   apiKey,
 	}
-}
-
-// DownloadFile delegates to the underlying storage with user context
-func (s *UserPricelistStorage) DownloadFile(remotePath string) ([]byte, error) {
-	return s.storage.DownloadFileForUser(remotePath, s.username, s.apiKey)
-}
-
-// UploadFile delegates to the underlying storage
-func (s *UserPricelistStorage) UploadFile(remotePath string, content io.Reader) error {
-	return s.storage.UploadFileForUser(remotePath, content, s.username)
-}
-
-// DeleteFile delegates to the underlying storage
-func (s *UserPricelistStorage) DeleteFile(remotePath string) error {
-	return s.storage.DeleteFileForUser(remotePath, s.username)
-}
-
-// ListFiles delegates to the underlying storage
-func (s *UserPricelistStorage) ListFiles(remotePath string) ([]FileInfo, error) {
-	return s.storage.ListFilesForUser(remotePath, s.username)
-}
-
-// CreateDirectory delegates to the underlying storage
-func (s *UserPricelistStorage) CreateDirectory(remotePath string) error {
-	return s.storage.CreateDirectoryForUser(remotePath, s.username)
-}
-
-// FileExists delegates to the underlying storage
-func (s *UserPricelistStorage) FileExists(remotePath string) (bool, error) {
-	return s.storage.FileExistsForUser(remotePath, s.username)
-}
-
-// GetFileInfo delegates to the underlying storage
-func (s *UserPricelistStorage) GetFileInfo(remotePath string) (*FileInfo, error) {
-	return s.storage.GetFileInfoForUser(remotePath, s.username)
 }
 
 // UploadFile is disabled for pricelist API - pricelists are read-only
@@ -101,13 +49,13 @@ func (s *PricelistWebAPIStorage) UploadFileForUser(remotePath string, content io
 	return fmt.Errorf("upload not allowed for pricelist files")
 }
 
-// DownloadFile fetches pricelist data from the web API (with fallback to mock data)
+// DownloadFile fetches pricelist data from the web API
 func (s *PricelistWebAPIStorage) DownloadFile(remotePath string) ([]byte, error) {
 	// This should not be called directly - use UserPricelistStorage instead
 	return nil, fmt.Errorf("use UserPricelistStorage instead")
 }
 
-// DownloadFileForUser fetches pricelist data from the web API (with fallback to mock data)
+// DownloadFileForUser fetches pricelist data from the web API
 func (s *PricelistWebAPIStorage) DownloadFileForUser(remotePath, username, userApiKey string) ([]byte, error) {
 	// Only allow access to the specific pricelist file
 	if remotePath != "/Hinnat/salhydro_kaikki.zip" && remotePath != "salhydro_kaikki.zip" {
@@ -117,8 +65,7 @@ func (s *PricelistWebAPIStorage) DownloadFileForUser(remotePath, username, userA
 	url := fmt.Sprintf("%s/api/futur/pricelist", s.baseURL)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Printf("HTTP request creation failed, using mock data: %v", err)
-		return s.getMockPricelistData(), nil
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	// Add API key from user (password) to request headers
@@ -129,41 +76,22 @@ func (s *PricelistWebAPIStorage) DownloadFileForUser(remotePath, username, userA
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		log.Printf("HTTP request failed, using mock data: %v", err)
-		return s.getMockPricelistData(), nil
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("API request failed: HTTP %d, using mock data", resp.StatusCode)
-		return s.getMockPricelistData(), nil
+		return nil, fmt.Errorf("API request failed: HTTP %d", resp.StatusCode)
 	}
 
 	// Read the response body
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to read response body, using mock data: %v", err)
-		return s.getMockPricelistData(), nil
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	log.Printf("Successfully downloaded pricelist: %d bytes", len(data))
 	return data, nil
-}
-
-// getMockPricelistData returns mock pricelist data for testing
-func (s *PricelistWebAPIStorage) getMockPricelistData() []byte {
-	mockData := `PK
-This is a mock pricelist file for testing SFTP service.
-
-Product List:
-1. Product A - 10.99 EUR
-2. Product B - 25.50 EUR  
-3. Product C - 45.00 EUR
-
-Updated: ` + time.Now().Format("2006-01-02 15:04:05") + `
-`
-	log.Printf("Returning mock pricelist data: %d bytes", len(mockData))
-	return []byte(mockData)
 }
 
 // DeleteFile is disabled for pricelist API - pricelists are read-only
