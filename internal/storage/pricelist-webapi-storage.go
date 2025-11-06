@@ -117,35 +117,11 @@ func (s *PricelistWebAPIStorage) DeleteFile(username, remotePath string) error {
 	return fmt.Errorf("delete not allowed for pricelist files")
 }
 
-// ListFiles returns the available pricelist file
+// ListFiles lists available pricelist files for a user (no API call needed for listing)
 func (s *PricelistWebAPIStorage) ListFiles(username, remotePath string) ([]FileInfo, error) {
-	// For pricelist API, we return a fixed list with the single available file
-	// In a real implementation, you might query the API for available files
+	log.Printf("Listing pricelist files for user %s at path %s", username, remotePath)
 
-	url := fmt.Sprintf("%s/api/pricelist/info", s.baseURL)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		// Fallback to hardcoded file info if API call fails
-		log.Printf("Failed to create API request, using fallback: %v", err)
-		return s.getFallbackFileList(), nil
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.apiKey))
-	req.Header.Set("User-Agent", "SFTP-Service/1.0")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		// Fallback to hardcoded file info if API call fails
-		log.Printf("API request failed, using fallback (status: %d, error: %v)", resp.StatusCode, err)
-		if resp != nil {
-			resp.Body.Close()
-		}
-		return s.getFallbackFileList(), nil
-	}
-	defer resp.Body.Close()
-
-	// For simplicity, return fallback for now
-	// In a real implementation, you would parse the API response here
+	// Return hardcoded file list - API call only happens during download
 	return s.getFallbackFileList(), nil
 }
 
@@ -154,7 +130,7 @@ func (s *PricelistWebAPIStorage) getFallbackFileList() []FileInfo {
 	return []FileInfo{
 		{
 			Name:         "salhydro_kaikki.zip",
-			Size:         0, // Size will be determined when downloaded
+			Size:         2 * 1024 * 1024, // 2MB
 			LastModified: time.Now(),
 			IsDir:        false,
 		},
@@ -182,10 +158,9 @@ func (s *PricelistWebAPIStorage) GetFileInfo(username, remotePath string) (*File
 	}
 
 	// Return basic file info
-	// In a real implementation, you might query the API for actual file metadata
 	return &FileInfo{
 		Name:         "salhydro_kaikki.zip",
-		Size:         0, // Size will be determined when downloaded
+		Size:         2 * 1024 * 1024, // 2MB
 		LastModified: time.Now(),
 		IsDir:        false,
 	}, nil

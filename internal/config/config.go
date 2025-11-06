@@ -8,13 +8,13 @@ import (
 )
 
 type Config struct {
-	AuthAPIURL       string
-	PricelistAPIURL  string
-	PricelistAPIKey  string
-	OrdersAPIURL     string
-	OrdersAPIKey     string
-	SFTPHostKeyPath  string
-	SFTPPort         string
+	AuthAPIURL      string
+	PricelistAPIURL string
+	PricelistAPIKey string
+	OrdersAPIURL    string
+	OrdersAPIKey    string
+	SFTPHostKeyPath string
+	SFTPPort        string
 }
 
 // LoadConfig loads configuration from environment variables
@@ -23,10 +23,10 @@ func LoadConfig() (*Config, error) {
 	_ = godotenv.Load()
 
 	config := &Config{
-		AuthAPIURL:      getEnv("AUTH_API_URL", "http://localhost:8080"),
-		PricelistAPIURL: getEnv("PRICELIST_API_URL", "http://localhost:8081"),
+		AuthAPIURL:      getEnv("AUTH_API_URL", "http://localhost:3000"),
+		PricelistAPIURL: getEnv("PRICELIST_API_URL", "http://localhost:3000"),
 		PricelistAPIKey: getEnv("PRICELIST_API_KEY", ""),
-		OrdersAPIURL:    getEnv("ORDERS_API_URL", "http://localhost:8082"),
+		OrdersAPIURL:    getEnv("ORDERS_API_URL", "http://localhost:3000"),
 		OrdersAPIKey:    getEnv("ORDERS_API_KEY", ""),
 		SFTPHostKeyPath: getEnv("SFTP_HOST_KEY_PATH", "./host_key"),
 		SFTPPort:        getEnv("SFTP_PORT", "2222"),

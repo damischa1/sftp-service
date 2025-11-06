@@ -54,7 +54,7 @@ func (w *WebAPIAuthenticator) AuthenticateUser(username, password string) (*User
 		}, nil
 	}
 
-	// Try API authentication
+	// Try API authentication (username already includes customer_ prefix)
 	authReq := AuthRequest{
 		Username: username,
 		Password: password,
@@ -65,7 +65,7 @@ func (w *WebAPIAuthenticator) AuthenticateUser(username, password string) (*User
 		return nil, fmt.Errorf("failed to marshal auth request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/auth/login", w.baseURL)
+	url := fmt.Sprintf("%s/api/futur/login", w.baseURL)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("HTTP request creation failed, falling back to hardcoded check: %v", err)
