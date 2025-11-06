@@ -64,9 +64,6 @@ func (s *IncomingOrdersStorage) StoreIncomingFile(filename, content string) erro
 
 // sendOrderToAPI sends the order data to the HTTP API
 func (s *IncomingOrdersStorage) sendOrderToAPI(filename, content, timestamp string) error {
-	if s.apiURL == "" {
-		return fmt.Errorf("API URL not configured")
-	}
 
 	orderReq := OrderRequest{
 		Username:  s.username,
@@ -110,30 +107,4 @@ func (s *IncomingOrdersStorage) sendOrderToAPI(filename, content, timestamp stri
 
 	log.Printf("Order successfully sent to API: %s", string(body))
 	return nil
-}
-
-// FileExists checks if incoming file exists (always false since no local storage)
-func (s *IncomingOrdersStorage) FileExists(filename string) (bool, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	// Since files are sent directly to API and not stored locally,
-	// we always return false to allow uploads
-	return false, nil
-}
-
-// ListIncomingFiles returns an empty list since files are sent directly to API
-func (s *IncomingOrdersStorage) ListIncomingFiles() ([]IncomingFileInfo, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	// Since files are sent directly to API and not stored locally,
-	// we return an empty directory listing
-	return []IncomingFileInfo{}, nil
-}
-
-type IncomingFileInfo struct {
-	Name    string
-	Size    int64
-	ModTime time.Time
 }

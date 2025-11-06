@@ -27,18 +27,11 @@ type APIFileSystem struct {
 // IncomingOrdersStorage interface for file storage (/in/ directory orders)
 type IncomingOrdersStorage interface {
 	StoreIncomingFile(filename, content string) error
-	FileExists(filename string) (bool, error)
-	ListIncomingFiles() ([]storage.IncomingFileInfo, error)
 }
 
 // PricelistStorage interface defines the methods needed for pricelist file operations
 type PricelistStorage interface {
-	UploadFile(remotePath string, content io.Reader) error
 	DownloadFile(remotePath string) ([]byte, error)
-	DeleteFile(remotePath string) error
-	ListFiles(remotePath string) ([]storage.FileInfo, error)
-	CreateDirectory(remotePath string) error
-	FileExists(remotePath string) (bool, error)
 	GetFileInfo(remotePath string) (*storage.FileInfo, error)
 }
 
@@ -89,84 +82,6 @@ func (fs *APIFileSystem) isWriteAllowed(path string) bool {
 // isInIncomingDirectory checks if path is in /in/ directory
 func (fs *APIFileSystem) isInIncomingDirectory(path string) bool {
 	return strings.HasPrefix(path, "/in/") && !strings.Contains(strings.TrimPrefix(path, "/in/"), "/")
-}
-
-// Stat implements stat operations for SFTP
-func (fs *APIFileSystem) Stat(r *sftp.Request) (os.FileInfo, error) {
-	log.Printf("SFTP stat: %s (user: %s)", r.Filepath, fs.username)
-
-	// Normalize path
-	path := r.Filepath
-	if path == "" || path == "." {
-		path = "/"
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-
-	log.Printf("Normalized path: '%s'", path)
-
-	// Check if path is allowed
-	if !fs.isPathAllowed(path) {
-		log.Printf("Stat access denied: user %s tried to stat %s (normalized: %s)", fs.username, r.Filepath, path)
-		return nil, fmt.Errorf("access denied: path not allowed")
-	}
-
-	// Handle root directory
-	if path == "/" {
-		return &apiFileInfo{
-			name:    "",
-			size:    0,
-			modTime: time.Now(),
-			isDir:   true,
-		}, nil
-	}
-
-	// Handle /in directory
-	if path == "/in" {
-		fileInfo := &apiFileInfo{
-			name:    "in",
-			size:    0,
-			modTime: time.Now(),
-			isDir:   true,
-		}
-		log.Printf("Returning /in stat: name=%s, isDir=%v, mode=%v", fileInfo.Name(), fileInfo.IsDir(), fileInfo.Mode())
-		return fileInfo, nil
-	}
-
-	// Handle /Hinnat directory
-	if path == "/Hinnat" {
-		fileInfo := &apiFileInfo{
-			name:    "Hinnat",
-			size:    0,
-			modTime: time.Now(),
-			isDir:   true,
-		}
-		log.Printf("Returning /Hinnat stat: name=%s, isDir=%v, mode=%v", fileInfo.Name(), fileInfo.IsDir(), fileInfo.Mode())
-		return fileInfo, nil
-	}
-
-	// Handle files in /Hinnat directory
-	if strings.HasPrefix(path, "/Hinnat/") {
-		filename := strings.TrimPrefix(path, "/Hinnat/")
-		fileInfo, err := fs.pricelistStorage.GetFileInfo(filename)
-		if err != nil {
-			return nil, err
-		}
-		return &apiFileInfo{
-			name:    fileInfo.Name,
-			size:    fileInfo.Size,
-			modTime: fileInfo.LastModified,
-			isDir:   fileInfo.IsDir,
-		}, nil
-	}
-
-	// Files in /in directory are write-only
-	if fs.isInIncomingDirectory(path) {
-		return nil, fmt.Errorf("access denied: /in/ directory files cannot be accessed")
-	}
-
-	return nil, fmt.Errorf("file not found: %s", path)
 }
 
 // Realpath resolves absolute paths for SFTP operations
@@ -251,14 +166,11 @@ func (fs *APIFileSystem) Filecmd(r *sftp.Request) error {
 		log.Printf("Delete denied: user %s tried to delete %s", fs.username, r.Filepath)
 		return fmt.Errorf("access denied: delete operations not allowed")
 	case "Mkdir":
-		// Only allow mkdir in /in directory
-		if !fs.isWriteAllowed(r.Filepath) {
-			log.Printf("Mkdir denied: user %s tried to create directory %s", fs.username, r.Filepath)
-			return fmt.Errorf("access denied: directory creation not allowed in this location")
-		}
-		return fs.pricelistStorage.CreateDirectory(r.Filepath)
+		log.Printf("Mkdir denied: user %s tried to delete %s", fs.username, r.Filepath)
+		return fmt.Errorf("access denied: mkdir operations not allowed")
 	case "Rename":
 		// Deny all rename operations
+		log.Printf("Rename denied: user %s tried to delete %s", fs.username, r.Filepath)
 		return fmt.Errorf("access denied: rename operations not allowed")
 	case "Rmdir":
 		// Deny all directory removal operations
@@ -297,7 +209,7 @@ func (fs *APIFileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 			return fs.statInDirectory()
 		} else {
 			// List files inside directory for ls command
-			return fs.listIncomingDirectory()
+			return fs.listInDirectory()
 		}
 	}
 
@@ -312,40 +224,31 @@ func (fs *APIFileSystem) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 		}
 	}
 
-	files, err := fs.pricelistStorage.ListFiles(r.Filepath)
-	if err != nil {
-		return nil, err
+	// Handle /Hinnat/salhydro_kaikki.zip file specifically
+	if r.Filepath == "/Hinnat/salhydro_kaikki.zip" {
+		fileInfo := &apiFileInfo{
+			name:    "salhydro_kaikki.zip",
+			size:    2 * 1024 * 1024,
+			modTime: time.Now(),
+			isDir:   false,
+		}
+		return &listerat{files: []os.FileInfo{fileInfo}}, nil
 	}
 
+	// If no specific handler found, return empty file list
 	var fileInfos []os.FileInfo
-	for _, file := range files {
-		fileInfos = append(fileInfos, &apiFileInfo{
-			name:    file.Name,
-			size:    file.Size,
-			modTime: file.LastModified,
-			isDir:   file.IsDir,
-		})
-	}
-
 	return &listerat{files: fileInfos}, nil
 }
 
 // listHinnatDirectory returns files inside /Hinnat directory
 func (fs *APIFileSystem) listHinnatDirectory() (sftp.ListerAt, error) {
-	files, err := fs.pricelistStorage.ListFiles("/Hinnat")
-	if err != nil {
-		return nil, err
-	}
-
 	var fileInfos []os.FileInfo
-	for _, file := range files {
-		fileInfos = append(fileInfos, &apiFileInfo{
-			name:    file.Name,
-			size:    file.Size,
-			modTime: file.LastModified,
-			isDir:   file.IsDir,
-		})
-	}
+	fileInfos = append(fileInfos, &apiFileInfo{
+		name:    "salhydro_kaikki.zip",
+		size:    2 * 1024 * 1024, // 2MB
+		modTime: time.Now(),
+		isDir:   false,
+	})
 
 	return &listerat{files: fileInfos}, nil
 }
@@ -360,6 +263,13 @@ func (fs *APIFileSystem) statHinnatDirectory() (sftp.ListerAt, error) {
 	}
 
 	return &listerat{files: []os.FileInfo{fileInfo}}, nil
+}
+
+// listInDirectory returns an empty directory (files are processed immediately on upload)
+func (fs *APIFileSystem) listInDirectory() (sftp.ListerAt, error) {
+	// Return empty directory - files are sent to API immediately when uploaded
+	var fileInfos []os.FileInfo
+	return &listerat{files: fileInfos}, nil
 }
 
 // statInDirectory returns directory info for /in (for cd command)
@@ -396,12 +306,7 @@ func (fs *APIFileSystem) listRootDirectory() (sftp.ListerAt, error) {
 	return &listerat{files: fileInfos}, nil
 }
 
-// listIncomingDirectory returns an empty directory (files are processed immediately on upload)
-func (fs *APIFileSystem) listIncomingDirectory() (sftp.ListerAt, error) {
-	// Return empty directory - files are sent to API immediately when uploaded
-	var fileInfos []os.FileInfo
-	return &listerat{files: fileInfos}, nil
-} // bytesReaderAt implements io.ReaderAt for byte slices
+// bytesReaderAt implements io.ReaderAt for byte slices
 type bytesReaderAt struct {
 	data []byte
 }
@@ -436,13 +341,6 @@ func (w *apiWriterAt) WriteAt(p []byte, off int64) (int, error) {
 
 	copy(w.data[off:], p)
 	return len(p), nil
-}
-
-func (w *apiWriterAt) Close() error {
-	if len(w.data) > 0 {
-		return w.storage.UploadFile(w.path, strings.NewReader(string(w.data)))
-	}
-	return nil
 }
 
 // incomingWriterAt implements io.WriterAt for API /in/ directory
