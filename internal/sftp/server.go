@@ -15,7 +15,6 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"sftp-service/internal/auth"
-	"sftp-service/internal/storage"
 )
 
 type Server struct {
@@ -156,13 +155,8 @@ func (s *Server) handleSFTP(channel ssh.Channel, username, apiKey string) {
 
 	log.Printf("Starting SFTP session for user: %s", username)
 
-	// Create storage instances for this user session
-	pricelistStorage := storage.NewPricelistWebAPIStorage(s.baseURL, username, apiKey)
-
-	incomingStorage := storage.NewIncomingOrdersStorage(s.baseURL, username, apiKey)
-
 	// Create API-backed file system for the user
-	filesystem := NewAPIFileSystem(pricelistStorage, incomingStorage, username, apiKey)
+	filesystem := NewAPIFileSystem(s.baseURL, username, apiKey)
 
 	// Create handlers
 	handlers := sftp.Handlers{

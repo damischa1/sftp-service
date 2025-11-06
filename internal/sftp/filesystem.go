@@ -16,38 +16,21 @@ import (
 
 // APIFileSystem implements sftp.FileLister, sftp.FileReader, sftp.FileWriter, sftp.FileCmder, and sftp.FileStater interfaces
 type APIFileSystem struct {
-	pricelistStorage PricelistStorage
-	incomingStorage  IncomingOrdersStorage // File storage for /in/ directory orders
-	username         string
-	apiKey           string   // API key for authenticated calls
-	allowedDirs      []string // Allowed directories for this user
-	allowedOps       []string // Allowed operations
-}
-
-// IncomingOrdersStorage interface for file storage (/in/ directory orders)
-type IncomingOrdersStorage interface {
-	StoreIncomingFile(filename, content string) error
-}
-
-// PricelistStorage interface defines the methods needed for pricelist file operations
-type PricelistStorage interface {
-	DownloadFile(remotePath string) ([]byte, error)
-	GetFileInfo(remotePath string) (*storage.FileInfo, error)
+	apiURL      string // API base URL for both pricelist and incoming orders
+	username    string
+	apiKey      string   // API key for authenticated calls
+	allowedDirs []string // Allowed directories for this user
+	allowedOps  []string // Allowed operations
 }
 
 // NewAPIFileSystem creates a new API-backed file system with restricted access
-func NewAPIFileSystem(pricelistStorage PricelistStorage, incomingStorage IncomingOrdersStorage, username, apiKey string) *APIFileSystem {
-	// Create user-specific wrapper for pricelist storage
-
-	// IncomingStorage is already configured with user details when created
-
+func NewAPIFileSystem(apiURL, username, apiKey string) *APIFileSystem {
 	return &APIFileSystem{
-		pricelistStorage: pricelistStorage,
-		incomingStorage:  incomingStorage,
-		username:         username,                                  // Keep for now, can be removed later
-		apiKey:           apiKey,                                    // Keep for now, can be removed later
-		allowedDirs:      []string{"/", "/in", "/Hinnat"},           // Only root, in, and Hinnat directories
-		allowedOps:       []string{"list", "read", "write-in-only"}, // List and read everywhere, write only to /in
+		apiURL:      apiURL,
+		username:    username,
+		apiKey:      apiKey,
+		allowedDirs: []string{"/", "/in", "/Hinnat"},           // Only root, in, and Hinnat directories
+		allowedOps:  []string{"list", "read", "write-in-only"}, // List and read everywhere, write only to /in
 	}
 }
 
@@ -116,7 +99,7 @@ func (fs *APIFileSystem) Fileread(r *sftp.Request) (io.ReaderAt, error) {
 		return nil, fmt.Errorf("access denied: /in/ directory is write-only")
 	}
 
-	data, err := fs.pricelistStorage.DownloadFile(r.Filepath)
+	data, err := storage.DownloadPricelist(fs.apiURL, fs.username, fs.apiKey, r.Filepath)
 	if err != nil {
 		return nil, err
 	}
@@ -138,16 +121,15 @@ func (fs *APIFileSystem) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 	if fs.isInIncomingDirectory(r.Filepath) {
 		filename := filepath.Base(r.Filepath)
 		return &incomingWriterAt{
-			incomingStorage: fs.incomingStorage,
-			filename:        filename,
+			apiURL:   fs.apiURL,
+			username: fs.username,
+			apiKey:   fs.apiKey,
+			filename: filename,
 		}, nil
 	}
 
-	// Handle /Hinnat/ directory (Web API storage)
-	return &apiWriterAt{
-		storage: fs.pricelistStorage,
-		path:    r.Filepath,
-	}, nil
+	// Handle /Hinnat/ directory (read-only, no writes allowed)
+	return nil, fmt.Errorf("access denied: /Hinnat directory is read-only")
 }
 
 // Filecmd implements sftp.FileCmder
@@ -323,31 +305,13 @@ func (r *bytesReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// apiWriterAt implements io.WriterAt for API uploads
-type apiWriterAt struct {
-	storage PricelistStorage
-	path    string
-	data    []byte
-}
-
-func (w *apiWriterAt) WriteAt(p []byte, off int64) (int, error) {
-	// Extend data slice if necessary
-	needed := int(off) + len(p)
-	if needed > len(w.data) {
-		newData := make([]byte, needed)
-		copy(newData, w.data)
-		w.data = newData
-	}
-
-	copy(w.data[off:], p)
-	return len(p), nil
-}
-
 // incomingWriterAt implements io.WriterAt for API /in/ directory
 type incomingWriterAt struct {
-	incomingStorage IncomingOrdersStorage
-	filename        string
-	data            []byte
+	apiURL   string
+	username string
+	apiKey   string
+	filename string
+	data     []byte
 }
 
 func (w *incomingWriterAt) WriteAt(p []byte, off int64) (int, error) {
@@ -366,7 +330,7 @@ func (w *incomingWriterAt) WriteAt(p []byte, off int64) (int, error) {
 func (w *incomingWriterAt) Close() error {
 	if len(w.data) > 0 {
 		content := string(w.data)
-		return w.incomingStorage.StoreIncomingFile(w.filename, content)
+		return storage.SendOrderToAPI(w.apiURL, w.username, w.apiKey, w.filename, content)
 	}
 	return nil
 }
